@@ -17,6 +17,8 @@ from zdroje.http import DRUHY, bez_diakritiky, get_json, vzdalenost_m
 CENA_DO = 15_000_000
 # Domy jen rodinné (Domča nechce chaty, chalupy ani usedlosti); obecné „dům“ = web druh neuvádí, radši ukázat.
 DRUHY_DOMU = {"rodinný dům", "vila", "vícegenerační dům", "dům"}
+DUM_OD = 250_000  # levnější „domy“ jsou mobilheimy, podíly a stavební buňky (Bazoš)
+VYMYSLENE_CENY = {123_456, 1_234_567, 12_345_678, 111_111, 1_111_111, 999_999, 9_999_999}  # = cena na dotaz
 KATEGORIE = {
     "byty": dict(titul="Byty", jednotne="byt", co="bytu"),
     "domy": dict(titul="Rodinné domy", jednotne="dům", co="rodinného domu"),
@@ -112,7 +114,7 @@ def _v_okruhu(b: dict) -> bool:
 
 
 def vyhovuje(b: dict) -> bool:
-    if b["kat"] == "domy" and b.get("druh") not in DRUHY_DOMU:
+    if b["kat"] == "domy" and (b.get("druh") not in DRUHY_DOMU or (b.get("cena") or DUM_OD) < DUM_OD):
         return False
     return b.get("cena") is None or b["cena"] <= CENA_DO  # „cena na dotaz“ radši ukázat
 
@@ -134,7 +136,7 @@ def hledej(kat: str, log=print) -> tuple[list[dict], list[str], list[dict]]:
             return [], stav | {"ok": False, "chyba": str(e), "pocet": 0, "vybrano": 0,
                                "sekund": round(time.monotonic() - zacatek)}
         for b in nalez:
-            if b.get("cena") and b["cena"] < 10_000:
+            if b.get("cena") and (b["cena"] < 10_000 or b["cena"] in VYMYSLENE_CENY):
                 b["cena"] = None  # „1 Kč“ = cena na dotaz; u pozemků občas cena za m² místo celkové
             _dopln_polohu(b)
         v_okruhu = [b for b in nalez if _v_okruhu(b)]
@@ -162,8 +164,22 @@ def hledej(kat: str, log=print) -> tuple[list[dict], list[str], list[dict]]:
     vse = [b for z_webu, _ in casti for b in z_webu]
     weby = [stav for _, stav in casti]
     vysledek = _sluc(vse)
+    _dopln_okresy(vysledek)
     _trh(kat, vysledek, trh, log)
     return vysledek, hlasky, weby
+
+
+def _dopln_okresy(inzeraty: list[dict]):
+    """Okres chybí hlavně u Bazoše (jen PSČ): stejná obec jinde, jinak nejbližší inzerát se známým okresem do 3 km."""
+    znamy = [b for b in inzeraty if b.get("okres") and b.get("gps")]
+    podle_obce = {bez_diakritiky(b.get("mesto") or ""): b["okres"] for b in znamy if b.get("mesto")}
+    for b in inzeraty:
+        if b.get("okres"):
+            continue
+        b["okres"] = podle_obce.get(bez_diakritiky(b.get("mesto") or ""), "")
+        if not b["okres"] and b.get("gps") and znamy:
+            vzd, nejblizsi = min((vzdalenost_m(tuple(b["gps"]), tuple(z["gps"])), z["okres"]) for z in znamy)
+            b["okres"] = nejblizsi if vzd <= 3000 else ""
 
 
 def _dopln_detail(modul, b: dict, log):

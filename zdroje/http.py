@@ -227,13 +227,15 @@ def vzdalenost_m(a: tuple[float, float], b: tuple[float, float]) -> int:
 # --- druh nemovitosti: jednotné názvy napříč weby ---
 DRUHY = {
     "byty": ["byt"],
-    "domy": ["rodinný dům", "vila", "vícegenerační dům", "chata / chalupa", "zemědělská usedlost", "činžovní dům", "dům"],
+    "domy": ["rodinný dům", "vila", "vícegenerační dům", "chata / chalupa", "zemědělská usedlost", "činžovní dům",
+             "mobilní dům", "dům"],
     "pozemky": ["stavební pozemek", "zahrada", "komerční pozemek", "pole", "louka", "les", "sad / vinice", "rybník",
                 "pozemek"],
 }
 _DRUH_VZORY = {
     # pořadí rozhoduje: „komerční stavební pozemek“ je komerční, „stavební pozemek se zahradou“ stavební
-    "domy": [(r"vicegener", "vícegenerační dům"), (r"\bvil[ayu]\b|\bvile\b", "vila"), (r"chalup|\bchat[aeyu]?\b|chatk|rekreacn", "chata / chalupa"),
+    "domy": [(r"mobilheim|mobilni dum|mobil home|maringotk|tiny ?house|obytn\w* bunk|\bbunk", "mobilní dům"),
+             (r"vicegener", "vícegenerační dům"), (r"\bvil[ayu]\b|\bvile\b", "vila"), (r"chalup|\bchat[aeyu]?\b|chatk|rekreacn", "chata / chalupa"),
              (r"usedlost|statek|zemedelsk", "zemědělská usedlost"), (r"cinzov|najemni dum|bytovy dum|bytoveho domu", "činžovní dům"), (r"rodin|\brd\b|na klic|radov", "rodinný dům")],
     "pozemky": [(r"komercn", "komerční pozemek"), (r"staveb|bydleni", "stavební pozemek"), (r"zahrad", "zahrada"),
                 (r"\bsad|vinic", "sad / vinice"), (r"\bpole\b|\bpoli\b|\born[ae]", "pole"), (r"louk", "louka"),

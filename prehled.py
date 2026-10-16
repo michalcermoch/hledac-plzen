@@ -620,7 +620,7 @@ border:1px solid var(--line);border-radius:12px;padding:3px 4px 3px 10px}
 .razeni-obal select{font:600 13px Inter,sans-serif;color:var(--text);border:0;background:var(--surface-2);border-radius:9px;padding:6px 8px;cursor:pointer}
 .filtry{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:14px 16px;
 display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
-.f-radek{display:flex;gap:10px;align-items:flex-start}
+.f-radek{display:flex;gap:10px;align-items:flex-start;min-width:0}.f-radek>*,.filtry{min-width:0;max-width:100%}
 .f-radek .lbl,.pole span{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .f-radek .lbl{flex:none;width:76px;padding-top:6px}
 .volby{display:flex;flex-wrap:wrap;gap:6px}
@@ -748,7 +748,7 @@ function projde(kat,d){const f=F[kat];
 const M2=d=>d.cena&&d.plocha?d.cena/d.plocha:null;
 const vzest=v=>v==null?Infinity:v,sest=v=>v==null?-Infinity:v;
 const RAZENI={
-  novy:(a,b)=>(b.novy-a.novy)||(vzest(a.dni)-vzest(b.dni))||(vzest(a.cena)-vzest(b.cena)),
+  novy:(a,b)=>(b.novy-a.novy)||(vzest(a.dni)-vzest(b.dni))||(b.odkazy.length-a.odkazy.length)||(b.fotky.length-a.fotky.length),
   cena:(a,b)=>vzest(a.cena)-vzest(b.cena),'-cena':(a,b)=>sest(b.cena)-sest(a.cena),
   plocha:(a,b)=>vzest(a.plocha)-vzest(b.plocha),'-plocha':(a,b)=>sest(b.plocha)-sest(a.plocha),
   m2:(a,b)=>vzest(M2(a))-vzest(M2(b)),km:(a,b)=>vzest(a.vzdalenost)-vzest(b.vzdalenost),
@@ -781,7 +781,9 @@ function karta(kat,i){const d=DATA[kat][i],f=d.fotky,b=[];
   const m2=M2(d),podcena=m2?'<small>'+fmt(m2)+' Kč/m²</small>':'';
   const udaje=[kat==='byty'?d.dispozice:d.druh,d.plocha?fmt(d.plocha)+' m²':'',d.pozemek?'pozemek '+fmt(d.pozemek)+' m²':''].filter(Boolean);
   let chips='';
-  if(d.vzdalenost!=null)chips+='<span class="chip hl">'+CIL+kmT(d.vzdalenost)+' od centra'+(d.gps_odhad==='obec'||d.gps_odhad==='PSČ'?' (obec)':'')+'</span>';
+  const hruba=d.gps_odhad==='obec'||d.gps_odhad==='PSČ';
+  // poloha jen podle obce: u samotné Plzně by vyšlo „27 m od centra“ - nic neříká, tak se neukazuje
+  if(d.vzdalenost!=null&&!(hruba&&d.vzdalenost<2000))chips+='<span class="chip hl">'+CIL+(hruba?'asi ':'')+kmT(d.vzdalenost)+' od centra</span>';
   if(d.trh)chips+='<span class="chip '+(d.trh.rozdil<=-0.03?'dobre':d.trh.rozdil>=0.03?'spatne':'')+'">'+esc(d.trh_text)+'</span>';
   const ai=d.ai&&d.ai.shrnuti?'<p class="ai" title="Napsala umělá inteligence z textu inzerátu – může se mýlit"><b class="ai-lbl">AI</b><span>'+esc(d.ai.shrnuti)+'</span></p>':'';
   const misto=esc(d.obec||d.misto||'')+(d.cast&&d.cast!==d.obec?', '+esc(d.cast):'')+(d.okres?'<small>okres '+esc(d.okres)+'</small>':'');
@@ -904,7 +906,7 @@ function otevri(d,start){akt=d;
     ab.querySelector('.proc').replaceChildren(...d.ai.plusy.map(t=>el('li','plus',t)),...d.ai.rizika.map(t=>el('li','minus',t)))}
   const fk=[];if(d.dispozice)fk.push(fakt('dispozice',d.dispozice));if(d.plocha)fk.push(fakt('plocha',fmt(d.plocha)+' m²'));
   if(d.pozemek)fk.push(fakt('pozemek','pozemek '+fmt(d.pozemek)+' m²'));
-  if(d.vzdalenost!=null)fk.push(fakt('km',kmT(d.vzdalenost)+' od centra'));if(d.okres)fk.push(fakt('okres','okres '+d.okres));
+  if(d.vzdalenost!=null&&!((d.gps_odhad==='obec'||d.gps_odhad==='PSČ')&&d.vzdalenost<2000))fk.push(fakt('km',kmT(d.vzdalenost)+' od centra'));if(d.okres)fk.push(fakt('okres','okres '+d.okres));
   if(d.trh_text){const x=el('div','fakt trh'+(d.trh.rozdil<=-0.03?' dobre':d.trh.rozdil>=0.03?' spatne':''));
     x.textContent=d.trh_text[0].toUpperCase()+d.trh_text.slice(1)+' – průměr '+fmt(d.trh.median)+' Kč/m² z '+d.trh.n+' inzerátů';fk.push(x)}
   dlg.querySelector('.dFakta').replaceChildren(...fk);
