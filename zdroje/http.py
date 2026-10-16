@@ -239,7 +239,7 @@ _DRUH_VZORY = {
              (r"usedlost|statek|zemedelsk", "zemědělská usedlost"), (r"cinzov|najemni dum|bytovy dum|bytoveho domu", "činžovní dům"), (r"rodin|\brd\b|na klic|radov", "rodinný dům")],
     "pozemky": [(r"komercn", "komerční pozemek"), (r"staveb|bydleni", "stavební pozemek"), (r"zahrad", "zahrada"),
                 (r"\bsad|vinic", "sad / vinice"), (r"\bpole\b|\bpoli\b|\born[ae]", "pole"), (r"louk", "louka"),
-                (r"\bles[uy]?\b|lesni", "les"), (r"rybni", "rybník"), (r"zemedel", "pole")],
+                (r"\bles[auy]?\b|lesni", "les"), (r"rybni", "rybník"), (r"zemedel", "pole")],
 }
 
 

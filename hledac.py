@@ -5,7 +5,7 @@
     py hledac.py domy pozemky   # jen některé kategorie
     py hledac.py --neotvirat
     py hledac.py --prekreslit   # jen znovu vykreslí přehled z posledních výsledků (bez stahování)
-    py hledac.py --cloud        # běh v GitHub Actions (stránka do web/index.html, upozornění přes ntfy)
+    py hledac.py --cloud        # běh v GitHub Actions (stránka do web/index.html, denní souhrn e-mailem)
 
 Stáhne inzeráty z 8 realitních webů, vyfiltruje je (natvrdo v nemovitosti.py a oblast.py), zapamatuje si je
 v hledac.db a vygeneruje prehled.html (nové od minula a zlevněné jsou označené). K inzerátům může přidat

@@ -2,7 +2,7 @@
 
 Osobní hledač pro Domču. Prochází 8 realitních webů, vybírá **byty, rodinné domy a pozemky na prodej
 do 15 mil. Kč a do 20 km od centra Plzně**, slučuje duplicity a pamatuje si, co je nové a co zlevnilo.
-Výsledek je jedna zaheslovaná webová stránka (telefon i počítač) a upozornění na mobil.
+Výsledek je jedna zaheslovaná webová stránka (telefon i počítač) a denní souhrn e-mailem.
 
 Stejný princip jako Hledač bytů a aut (`C:\Projects\Hledac`), jen pro nemovitosti a s filtry přímo na stránce.
 
@@ -40,7 +40,7 @@ py hledac.py --prekreslit  # jen překreslit stránku z posledních dat
 ```
 
 Jen Python 3.11+ a standardní knihovna (pro šifrování stránky v cloudu ještě `cryptography`).
-Osobní nastavení je v `nastaveni.json` (není v gitu): jméno, oslovení, kanál ntfy, WhatsApp, klíč AI.
+Osobní nastavení je v `nastaveni.json` (není v gitu): jméno, oslovení, e-mail, klíč AI (viz `nastaveni.py`).
 
 Napoprvé stahuje detaily tisíců inzerátů – každý web na ně má za běh 7 minut, co se nestihne, doplní
 se příště. Detaily se drží 3–6 dní v `cache.db`, polohy obcí 90 dní.
@@ -59,8 +59,8 @@ GitHub Secrets:
 | `HESLO_STRANKY` | kód z pozvánky pro první přihlášení | ano |
 | `PRISTUP_KANAL` | skrytý kanál ntfy, kam stránka pošle nově nastavené heslo | ano |
 | `JMENO`, `OSLOVENI` | „Hledač · Domča“, „Ahoj Domčo!“ | ne |
-| `NTFY_KANAL` | kanál pro push na mobil | ne |
-| `WHATSAPP_TELEFON`, `WHATSAPP_KLIC` | zprávy na WhatsApp (CallMeBot) | ne |
+| `EMAIL_KOMU` a `SMTP_…`, `EMAIL_OD` | denní souhrn e-mailem (viz níž) | pro souhrn ano |
+| `NTFY_KANAL` | souhrn i do aplikace ntfy | ne |
 | `AI_API_KLIC` | postřehy AI k inzerátům (Google Gemini, zdarma) | ne |
 | `AKTUALIZACE_TOKEN` | tlačítko Aktualizovat spustí hledání přímo ze stránky | ne |
 
@@ -77,16 +77,20 @@ kód z pozvánky neplatí. Na zařízení, kde si heslo nastavil, platí hned; j
 
 Zapomenuté heslo: smazat `pristupy.json` ve větvi `gh-pages` – po dalším běhu zase platí kód z pozvánky.
 
-## Upozornění na mobil
+## Denní souhrn e-mailem
 
-**Jen z cloudu, jednou denně kolem 20:00** – jeden souhrn všeho, co od minulého souhrnu přibylo nebo zlevnilo
-(po kategoriích, nejvýš 8 inzerátů z každé, zbytek počtem). Když nic nepřibylo, nic nepřijde. Místní server
-(`Hledač.cmd`) nic neposílá. Souhrn jde při prvním běhu po 20:00 pražského času (`SOUHRN_HODINY` v `hledac.py`).
+**Jen z cloudu, jednou denně kolem 20:00** – jeden e-mail se vším, co od minulého souhrnu přibylo nebo zlevnilo
+(po kategoriích, u každého inzerátu fotka, cena, cena za m², údaje a odkaz; nejvýš 15 z kategorie, zbytek počtem).
+Když nic nepřibylo, nic nepřijde. Místní server (`Hledač.cmd`) nic neposílá. Souhrn jde při prvním běhu po 20:00
+pražského času (`SOUHRN_HODINY` v `hledac.py`).
 
-- **ntfy** (doporučeno): nainstalovat aplikaci *ntfy* (Android/iPhone), dát „Subscribe to topic“
-  a vložit název kanálu. Klepnutím na souhrn se otevře přehled.
-- **WhatsApp** (CallMeBot, zdarma): Domča si podle návodu na
-  <https://www.callmebot.com/blog/free-api-whatsapp-messages/> uloží číslo bota (aktuální je v návodu)
-  a pošle mu zprávu `I allow callmebot to send me messages`. Bot odpoví klíčem (apikey). Telefon (ve tvaru +420…) a klíč
-  se vloží do secrets `WHATSAPP_TELEFON` a `WHATSAPP_KLIC`. Ve WhatsAppu je u každého inzerátu i odkaz.
-- **E-mail** zatím ne: chtělo by to heslo k poštovnímu účtu uložené v GitHubu.
+Posílá se přes SMTP (secrets `EMAIL_KOMU`, `EMAIL_OD`, `SMTP_SERVER`, `SMTP_PORT`, `SMTP_UZIVATEL`, `SMTP_HESLO`):
+
+- **Gmail:** účet s dvoufázovým ověřením → https://myaccount.google.com/apppasswords → vytvořit heslo aplikace
+  (16 znaků). `SMTP_SERVER` = `smtp.gmail.com`, `SMTP_PORT` = `587`, `SMTP_UZIVATEL` = `EMAIL_OD` = adresa toho
+  Gmailu, `SMTP_HESLO` = heslo aplikace. Běžné heslo k Gmailu nikdy.
+- **Brevo** (zdarma 300 e-mailů denně, bez karty): účet → Settings → SMTP & API → SMTP key.
+  `SMTP_SERVER` = `smtp-relay.brevo.com`, `SMTP_PORT` = `587`, `SMTP_UZIVATEL` = přihlašovací login z té stránky,
+  `SMTP_HESLO` = SMTP klíč, `EMAIL_OD` = ověřený odesílatel (Senders).
+
+Nepovinně jde stejný souhrn i do aplikace **ntfy** (secret `NTFY_KANAL`).

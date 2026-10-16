@@ -31,9 +31,13 @@ jobs:
       PRISTUP_KANAL: ${{ secrets.PRISTUP_KANAL }}  # skrytý kanál ntfy pro nově nastavená hesla
       JMENO: ${{ secrets.JMENO }}
       OSLOVENI: ${{ secrets.OSLOVENI }}
-      NTFY_KANAL: ${{ secrets.NTFY_KANAL }}
-      WHATSAPP_TELEFON: ${{ secrets.WHATSAPP_TELEFON }}  # nepovinné (CallMeBot)
-      WHATSAPP_KLIC: ${{ secrets.WHATSAPP_KLIC }}
+      EMAIL_KOMU: ${{ secrets.EMAIL_KOMU }}        # denní souhrn kolem 20:00 (upozorneni.py)
+      EMAIL_OD: ${{ secrets.EMAIL_OD }}
+      SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_UZIVATEL: ${{ secrets.SMTP_UZIVATEL }}
+      SMTP_HESLO: ${{ secrets.SMTP_HESLO }}        # heslo aplikace / SMTP klíč, nikdy běžné heslo k poště
+      NTFY_KANAL: ${{ secrets.NTFY_KANAL }}        # nepovinné: souhrn i do aplikace ntfy
       AI_API_KLIC: ${{ secrets.AI_API_KLIC }}  # nepovinné: postřehy AI (Google Gemini zdarma)
       AKTUALIZACE_TOKEN: ${{ secrets.AKTUALIZACE_TOKEN }}  # nepovinné: tlačítko Aktualizovat spustí hledání přímo
       WEB_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
