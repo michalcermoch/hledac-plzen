@@ -324,7 +324,13 @@ SOUHRN_HODINY = range(20, 24)  # souhrn jde první běh po 20:00 (Praha); pozdě
 
 def denni_souhrn(sekce: list[tuple], odkaz: str | None):
     """Jednou denně kolem 20:00: souhrn všeho, co od minulého souhrnu přibylo nebo zlevnilo (upozorneni.py)."""
+    import os
     ted = datetime.now()  # workflow má TZ=Europe/Prague
+    if os.environ.get("SOUHRN_TEST"):  # ruční zkouška: posledních 24 h hned, čas souhrnu se neposouvá
+        od = (ted - timedelta(days=1)).isoformat(timespec="seconds")
+        print("souhrn: zkušební, od", od)
+        upozorneni.denni_souhrn(sekce, od, odkaz)
+        return
     if ted.hour not in SOUHRN_HODINY:
         return
     c = db()

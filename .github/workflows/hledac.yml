@@ -9,6 +9,11 @@ on:
     - cron: "7 4-20/2 * * *"  # UTC; v Česku (letní čas) 6:07, 8:07 … 22:07, v zimě o hodinu dřív
     - cron: "7 19 * * *"      # v zimě 20:07 - denní souhrn na mobil jde první běh po 20:00 (hledac.py)
   workflow_dispatch:
+    inputs:
+      test_souhrn:
+        description: "Hned poslat zkušební souhrn e-mailem (posledních 24 h)"
+        type: boolean
+        default: false
 
 concurrency:
   group: hledac
@@ -38,6 +43,7 @@ jobs:
       SMTP_UZIVATEL: ${{ secrets.SMTP_UZIVATEL }}
       SMTP_HESLO: ${{ secrets.SMTP_HESLO }}        # heslo aplikace / SMTP klíč, nikdy běžné heslo k poště
       NTFY_KANAL: ${{ secrets.NTFY_KANAL }}        # nepovinné: souhrn i do aplikace ntfy
+      SOUHRN_TEST: ${{ inputs.test_souhrn && '1' || '' }}
       AI_API_KLIC: ${{ secrets.AI_API_KLIC }}  # nepovinné: postřehy AI (Google Gemini zdarma)
       AKTUALIZACE_TOKEN: ${{ secrets.AKTUALIZACE_TOKEN }}  # nepovinné: tlačítko Aktualizovat spustí hledání přímo
       WEB_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
