@@ -1,0 +1,9 @@
+__pycache__/
+cache.db
+hledac.db
+hledac.log
+posledni.json
+prehled.html
+nastaveni.json
+web/
+*.heslo.txt

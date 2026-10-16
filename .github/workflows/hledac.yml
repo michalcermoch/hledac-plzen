@@ -1,0 +1,105 @@
+# Hledač nemovitostí v cloudu: hledá sám každé 2 hodiny přes den, i když žádný počítač neběží.
+# Repo je veřejné (GitHub Actions jsou pak zdarma bez limitu minut); v kódu nic tajného není.
+# Stav (hledac.db, posledni.json) a stažené stránky (cache.db) jsou v actions/cache - ne v gitu, takže
+# data jsou vidět jen v zašifrované stránce. Stránka jde do větve gh-pages (GitHub Pages).
+name: Hledač
+
+on:
+  schedule:
+    - cron: "7 4-20/2 * * *"  # UTC; v Česku (letní čas) 6:07, 8:07 … 22:07, v zimě o hodinu dřív
+  workflow_dispatch:
+
+concurrency:
+  group: hledac
+  cancel-in-progress: false
+
+permissions:
+  contents: write  # push zašifrované stránky do gh-pages
+  actions: write   # úklid starých cache
+
+jobs:
+  hledej:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      TZ: Europe/Prague
+      PYTHONIOENCODING: utf-8
+      PYTHONUNBUFFERED: "1"
+      HLAVNI_KLIC: ${{ secrets.HLAVNI_KLIC }}      # jím je stránka zašifrovaná (sifrovani.py)
+      HESLO_STRANKY: ${{ secrets.HESLO_STRANKY }}  # kód z pozvánky pro první přihlášení
+      PRISTUP_KANAL: ${{ secrets.PRISTUP_KANAL }}  # skrytý kanál ntfy pro nově nastavená hesla
+      JMENO: ${{ secrets.JMENO }}
+      OSLOVENI: ${{ secrets.OSLOVENI }}
+      NTFY_KANAL: ${{ secrets.NTFY_KANAL }}
+      WHATSAPP_TELEFON: ${{ secrets.WHATSAPP_TELEFON }}  # nepovinné (CallMeBot)
+      WHATSAPP_KLIC: ${{ secrets.WHATSAPP_KLIC }}
+      AI_API_KLIC: ${{ secrets.AI_API_KLIC }}  # nepovinné: postřehy AI (Google Gemini zdarma)
+      AKTUALIZACE_TOKEN: ${{ secrets.AKTUALIZACE_TOKEN }}  # nepovinné: tlačítko Aktualizovat spustí hledání přímo
+      WEB_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+      AKCE_URL: https://github.com/${{ github.repository }}/actions/workflows/hledac.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stav z minula
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            hledac.db
+            posledni.json
+          key: stav-${{ github.run_id }}
+          restore-keys: stav-
+
+      - name: Nastavená hesla (z gh-pages)
+        run: git fetch -q --depth=1 origin gh-pages && git show FETCH_HEAD:pristupy.json > pristupy.json || echo "zatím žádná"
+
+      - name: Stažené stránky z minula
+        uses: actions/cache/restore@v4
+        with:
+          path: cache.db
+          key: cache-${{ github.run_id }}
+          restore-keys: cache-
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - run: pip install cryptography
+
+      - name: Hledání
+        run: python hledac.py --cloud
+
+      - name: Uložit stav
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            hledac.db
+            posledni.json
+          key: stav-${{ github.run_id }}
+
+      - name: Uložit stažené stránky
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache.db
+          key: cache-${{ github.run_id }}
+
+      - name: Zveřejnit stránku
+        run: |
+          [ -f web/index.html ] || exit 1
+          cd web
+          git init -q -b gh-pages
+          git config user.name "Hledač" && git config user.email "hledac@users.noreply.github.com"
+          git add -A && git commit -qm "přehled $(date '+%F %H:%M')"
+          for pokus in 1 2 3; do git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" gh-pages && break || { [ $pokus = 3 ] && exit 1; sleep 20; }; done
+
+      - name: Uklidit staré cache
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # nechat jen nejnovější 2 kusy od každého druhu (každý běh ukládá nové, limit repa je 10 GB)
+          for druh in stav cache; do
+            gh cache list -R "${{ github.repository }}" --key "$druh-" --sort created_at --order desc --limit 100 --json id -q '.[2:][].id' \
+              | xargs -r -n1 gh cache delete -R "${{ github.repository }}" || true
+          done
