@@ -18,7 +18,7 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 # --- ohleduplnost: weby se prohledávají souběžně, ale na jednu doménu jde vždy jen jeden požadavek
 # a mezi požadavky je minimální odstup. Bazoš při rychlejším tempu vrací 429.
 # Nominatim: max 1 dotaz za sekundu; iDnes z GitHubu při rychlejším tempu shazuje spojení
-ODSTUP = {"bazos.cz": 2.0, "openstreetmap.org": 1.1, "idnes.cz": 1.0}
+ODSTUP = {"bazos.cz": 2.0, "openstreetmap.org": 1.1, "idnes.cz": 1.0, "ceskereality.cz": 1.0}  # ČeskéReality: 429 při 0,3 s
 ODSTUP_VYCHOZI = 0.3
 _zamky: dict[str, threading.Lock] = {}
 _posledni: dict[str, float] = {}
