@@ -79,11 +79,14 @@ Zapomenuté heslo: smazat `pristupy.json` ve větvi `gh-pages` – po dalším b
 
 ## Upozornění na mobil
 
+**Jen z cloudu, jednou denně kolem 20:00** – jeden souhrn všeho, co od minulého souhrnu přibylo nebo zlevnilo
+(po kategoriích, nejvýš 8 inzerátů z každé, zbytek počtem). Když nic nepřibylo, nic nepřijde. Místní server
+(`Hledač.cmd`) nic neposílá. Souhrn jde při prvním běhu po 20:00 pražského času (`SOUHRN_HODINY` v `hledac.py`).
+
 - **ntfy** (doporučeno): nainstalovat aplikaci *ntfy* (Android/iPhone), dát „Subscribe to topic“
-  a vložit název kanálu. Každá nová / zlevněná nemovitost přijde zvlášť i s fotkou, klepnutím se otevře
-  inzerát. Napoprvé přijde jen souhrn.
+  a vložit název kanálu. Klepnutím na souhrn se otevře přehled.
 - **WhatsApp** (CallMeBot, zdarma): Domča si podle návodu na
   <https://www.callmebot.com/blog/free-api-whatsapp-messages/> uloží číslo bota (aktuální je v návodu)
   a pošle mu zprávu `I allow callmebot to send me messages`. Bot odpoví klíčem (apikey). Telefon (ve tvaru +420…) a klíč
-  se vloží do secrets `WHATSAPP_TELEFON` a `WHATSAPP_KLIC`. Chodí jedna souhrnná zpráva za běh s odkazy.
+  se vloží do secrets `WHATSAPP_TELEFON` a `WHATSAPP_KLIC`. Ve WhatsAppu je u každého inzerátu i odkaz.
 - **E-mail** zatím ne: chtělo by to heslo k poštovnímu účtu uložené v GitHubu.

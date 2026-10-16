@@ -7,6 +7,7 @@ name: Hledač
 on:
   schedule:
     - cron: "7 4-20/2 * * *"  # UTC; v Česku (letní čas) 6:07, 8:07 … 22:07, v zimě o hodinu dřív
+    - cron: "7 19 * * *"      # v zimě 20:07 - denní souhrn na mobil jde první běh po 20:00 (hledac.py)
   workflow_dispatch:
 
 concurrency:

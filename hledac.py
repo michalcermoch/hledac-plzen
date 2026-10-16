@@ -50,6 +50,7 @@ def db():
     c.execute("""CREATE TABLE IF NOT EXISTS otisk (otisk TEXT PRIMARY KEY, kategorie TEXT, id TEXT,
         prvni TEXT, posledni TEXT, ceny TEXT)""")
     c.execute("CREATE TABLE IF NOT EXISTS ai (id TEXT PRIMARY KEY, otisk TEXT, cas TEXT, vysledek TEXT)")  # postřehy AI
+    c.execute("CREATE TABLE IF NOT EXISTS meta (klic TEXT PRIMARY KEY, hodnota TEXT)")  # např. kdy odešel souhrn
     if not c.execute("SELECT 1 FROM cena LIMIT 1").fetchone():  # první spuštění s historií: převzít, co víme
         c.execute("INSERT INTO cena SELECT id, prvni_videno, puvodni_cena FROM inzerat")
         c.execute("INSERT INTO cena SELECT id, naposled_videno, cena FROM inzerat WHERE cena IS NOT puvodni_cena")
@@ -104,7 +105,7 @@ def zapamatuj(c, kat: str, inzeraty: list[dict], ted: str) -> dict:
                     i["zlevneno_ted"] = True
                     souhrn["zlevnene"] += 1
             c.execute("UPDATE inzerat SET naposled_videno=?, cena=? WHERE id=?", (ted, i["cena"], i["id"]))
-        i["historie_cen"] = [(cas[:10], cena) for cas, cena in
+        i["historie_cen"] = [(cas, cena) for cas, cena in
                              c.execute("SELECT cas, cena FROM cena WHERE id=? ORDER BY cas", (i["id"],))]
         # Doba v nabídce u každého inzerátu: ze skutečného data vložení na webu (Sreality); kde ho web neuvádí,
         i["dni_min"] = not i.get("vlozeno")
@@ -191,18 +192,16 @@ class Stav:
     mobil_url: str | None = None
 
 
-AUTOMATICKY_KAZDYCH_S = 3 * 3600  # dokud Hledač běží, sám se aktualizuje a pošle upozornění na mobil (ntfy)
+AUTOMATICKY_KAZDYCH_S = 3 * 3600  # dokud Hledač běží, sám se aktualizuje (upozornění posílá jen cloud)
 
 
-def _aktualizuj(automaticky: bool = False):
+def _aktualizuj():
     def log(radek):
         print(radek)
         Stav.log.append(str(radek))
     try:
         Stav.souhrn = hledej(list(TITULY), log=log)
         Stav.dokonceno = datetime.now().isoformat(timespec="seconds")
-        if automaticky:
-            upozorneni.odesli(posledni()[0], Stav.mobil_url, log=log)
     except Exception as e:  # chybu ukázat v přehledu, server nechat běžet
         Stav.chyba = f"{type(e).__name__}: {e}"
         log(f"CHYBA {Stav.chyba}")
@@ -256,14 +255,14 @@ def _ip_v_siti() -> str | None:
 
 
 def _automaticky():
-    """Každé 3 hodiny aktualizace + upozornění přes ntfy (jen dokud běží Hledač; žádný Plánovač úloh)."""
+    """Každé 3 hodiny aktualizace (jen dokud běží Hledač; žádný Plánovač úloh). Upozornění posílá jen cloud."""
     while True:
         time.sleep(AUTOMATICKY_KAZDYCH_S)
         with Stav.zamek:
             if Stav.bezi:
                 continue
             Stav.bezi, Stav.log, Stav.chyba = True, [], ""
-        _aktualizuj(automaticky=True)
+        _aktualizuj()
 
 
 def server():
@@ -275,7 +274,7 @@ def server():
     print(f"Hledač běží na {url} (ukončení: Ctrl+C nebo zavřít okno)")
     if Stav.mobil_url:
         print(f"Z mobilu (stejná Wi-Fi): {Stav.mobil_url}")
-    print(f"Automatická aktualizace každé {AUTOMATICKY_KAZDYCH_S // 3600} h, novinky do aplikace ntfy, kanál: {nastaveni.nacti()['ntfy_kanal']}")
+    print(f"Automatická aktualizace každé {AUTOMATICKY_KAZDYCH_S // 3600} h (upozornění na mobil posílá jen cloud)")
     threading.Thread(target=_automaticky, daemon=True).start()
     if "--neotvirat" not in sys.argv:
         webbrowser.open(url)
@@ -317,7 +316,28 @@ def cloud():
     (web / "index.html").write_text(stranka, encoding="utf-8")
     (web / ".nojekyll").write_text("", encoding="utf-8")
     print(f"Zašifrovaná stránka: {web / 'index.html'}")
-    upozorneni.odesli(sekce, os.environ.get("WEB_URL"))
+    denni_souhrn(sekce, os.environ.get("WEB_URL"))
+
+
+SOUHRN_HODINY = range(20, 24)  # souhrn jde první běh po 20:00 (Praha); pozdější jen když se ten 20:07 zpozdí
+
+
+def denni_souhrn(sekce: list[tuple], odkaz: str | None):
+    """Jednou denně kolem 20:00: souhrn všeho, co od minulého souhrnu přibylo nebo zlevnilo (upozorneni.py)."""
+    ted = datetime.now()  # workflow má TZ=Europe/Prague
+    if ted.hour not in SOUHRN_HODINY:
+        return
+    c = db()
+    row = c.execute("SELECT hodnota FROM meta WHERE klic='souhrn'").fetchone()
+    if row and row[0][:10] == ted.date().isoformat():
+        c.close()
+        return  # dnes už odešel
+    # první souhrn: od prvního běhu (co bylo v nabídce už tehdy, není novinka)
+    od = row[0] if row else c.execute("SELECT MIN(prvni_videno) FROM inzerat").fetchone()[0] or ted.isoformat()
+    if upozorneni.denni_souhrn(sekce, od, odkaz):
+        c.execute("INSERT OR REPLACE INTO meta VALUES ('souhrn', ?)", (ted.isoformat(timespec="seconds"),))
+        c.commit()
+    c.close()
 
 
 def main():
