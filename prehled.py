@@ -8,6 +8,7 @@ import json
 from datetime import datetime
 from html import escape
 
+import hra
 import nastaveni
 import nemovitosti
 import oblast
@@ -244,7 +245,7 @@ def html(sekce_data: list[tuple], ted: str, mobil_url: str | None = None, akce_u
     <div class="hero-top">
       <div class="brand"><span class="logo">{IKONA_DUM}</span><b>Hledač{f' <em>· {escape(jmeno)}</em>' if jmeno else ''}</b></div>
       <div class="akce">{f'<a class="mobil" href="{mobil_url}" title="Stejná adresa funguje na telefonu ve stejné Wi-Fi">{IKONA_TEL}na mobilu: {mobil_url.replace("http://", "").rstrip("/")}</a>' if mobil_url else ""}<span class="prubeh" id="prubeh" hidden></span>
-        <button class="obnovit" id="obnovit" hidden title="Znovu prohledat všechny weby">{IKONA_OBNOVIT}<span>Aktualizovat</span></button></div>
+        {hra.TLACITKO}<button class="obnovit" id="obnovit" hidden title="Znovu prohledat všechny weby">{IKONA_OBNOVIT}<span>Aktualizovat</span></button></div>
     </div>
     <div class="hero-main">
       <div><p class="pozdrav">{pozdrav}</p><h1 id="heroTitul">{popisky[prvni]["titul"]}</h1>
@@ -271,6 +272,7 @@ def html(sekce_data: list[tuple], ted: str, mobil_url: str | None = None, akce_u
 <script type="application/json" id="data">{json_data}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>{JS}</script>
+{hra.HTML}<style>{hra.CSS}</style><script>{hra.JS}</script>
 </body></html>"""
 
 
@@ -994,7 +996,7 @@ function mapa(kat){const s=$('#s-'+kat),box=s&&s.querySelector('.mapa');
   if(!box||!window.L||s.hidden||s.querySelector('.mapa-obal').hidden||!stav[kat])return;
   let M=mapy[kat];
   if(!M){const m=L.map(box,{scrollWheelZoom:false,preferCanvas:true});
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+    (location.protocol==='file:'?L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Mapa © Esri'}):L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'})).addTo(m);
     L.circle(D.stred,{radius:D.okruh,color:'#2f6b4f',weight:1.5,dashArray:'6 6',fillColor:'#e9c47a',fillOpacity:.06,interactive:false}).addTo(m);
     L.marker(D.stred,{icon:L.divIcon({className:'',iconSize:null,html:'<div class="pin-cil"></div>'})}).addTo(m).bindTooltip('Centrum Plzně – '+D.stred_popis);
     M=mapy[kat]={m,vrstva:L.layerGroup().addTo(m)};m.fitBounds(L.latLng(D.stred).toBounds(D.okruh*1.75))}
