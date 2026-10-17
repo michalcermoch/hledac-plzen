@@ -1,4 +1,4 @@
-"""Hledač nemovitostí - Plzeň a okolí do 20 km (byty, domy, pozemky).
+"""Hledač nemovitostí - Plzeň a okolí do 20 km (co se hledá: nemovitosti.HLEDAT, teď jen rodinné domy).
 
     py hledac.py --server       # webový přehled na http://localhost:8766 s tlačítkem Aktualizovat (Hledač.cmd)
     py hledac.py                # jednorázově stáhne vše a otevře prehled.html
@@ -34,7 +34,7 @@ POSLEDNI = KOREN / "posledni.json"  # výsledky posledního běhu pro --prekresl
 PORT = 8766  # 8765 má Hledač bytů a aut, ať můžou běžet oba
 PREVZIT_DNI = 3  # jak dlouho držet inzeráty webu, který neodpovídá
 
-TITULY = {kat: k["titul"] for kat, k in nemovitosti.KATEGORIE.items()}
+TITULY = {kat: nemovitosti.KATEGORIE[kat]["titul"] for kat in nemovitosti.HLEDAT}
 # Co se hledá, pro AI (ať posuzuje inzeráty vůči zadání)
 ZADANI = {kat: "; ".join(f"{n} ({', '.join(p)})" for n, p in nemovitosti.POPIS[kat]) for kat in TITULY}
 
@@ -177,7 +177,8 @@ def posledni():
     if not POSLEDNI.exists():
         return [(k, [], [], []) for k in TITULY], datetime.now().isoformat(timespec="seconds")
     data = json.loads(POSLEDNI.read_text(encoding="utf-8"))
-    return [(tuple(x) + ([],) * 4)[:4] for x in data["sekce"]], data["ted"]  # starší soubory neměly stav webů
+    return [(tuple(x) + ([],) * 4)[:4] for x in data["sekce"]  # starší soubory neměly stav webů
+            if x[0] in TITULY], data["ted"]  # vypnuté kategorie (byty, pozemky) z dřívějších běhů ne
 
 
 # --- server s tlačítkem Aktualizovat ---

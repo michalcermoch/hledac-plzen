@@ -24,6 +24,8 @@ KATEGORIE = {
     "domy": dict(titul="Rodinné domy", jednotne="dům", co="rodinného domu"),
     "pozemky": dict(titul="Pozemky", jednotne="pozemek", co="pozemku (stavební, zahrada, pole, les…)"),
 }
+# Co se opravdu hledá a ukazuje (17. 10. 2026: Domča chce jen rodinné domy; byty a pozemky weby umí dál).
+HLEDAT = ["domy"]
 # Pro panel „Co hledám“ v přehledu.
 POPIS = {kat: [(f"{k['titul']} – {oblast.NAZEV}", ["koupě"] + (["bez chat a chalup"] if kat == "domy" else []) +
                                                    [f"do {CENA_DO // 1_000_000} mil. Kč",
