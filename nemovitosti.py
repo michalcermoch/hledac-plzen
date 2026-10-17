@@ -3,6 +3,7 @@
 Co se hledá, je tady a v oblast.py (střed, okruh, okresy). Jemnější výběr (druh, okres, obec, cena,
 velikost, vzdálenost) si Domča dělá přímo na stránce - filtry tam nic nestahují znovu.
 """
+import re
 import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
@@ -168,6 +169,8 @@ def hledej(kat: str, log=print) -> tuple[list[dict], list[str], list[dict]]:
     vysledek = _sluc(vse)
     _dopln_okresy(vysledek)
     _trh(kat, vysledek, trh, log)
+    if kat == "domy":
+        _trh_domy(vysledek, log)  # přepíše hrubé srovnání za m² odhadem pro podobný dům, když je dost dat
     return vysledek, hlasky, weby
 
 
@@ -239,6 +242,100 @@ def _sluc(vse: list[dict]) -> list[dict]:
 
 def _v_plzni(b: dict) -> bool:
     return bez_diakritiky(b.get("mesto") or "").startswith(bez_diakritiky(oblast.MESTO))
+
+
+# --- srovnání s podobnými domy (17. 10. 2026: krásný dům po rekonstrukci nemá vycházet „o 47 % nad průměrem“
+#     jen proto, že se srovnával s průměrnou cenou za m² všech domů včetně těch k rekonstrukci) ---
+
+STAV_KLICE = ("stav budovy", "stav objektu", "stav nemovitosti", "stav")  # „Stavba“ = konstrukce, ne stav
+NOVY, DOBRY, KREK = "nový nebo po rekonstrukci", "v dobrém stavu", "k rekonstrukci"
+MNOZNE = {NOVY: "nové nebo po rekonstrukci", DOBRY: "v dobrém stavu", KREK: "k rekonstrukci"}
+STAVY = [  # (třída, vzor v hodnotě parametru nebo v textu); pořadí = přednost
+    (KREK, r"pred rekonstrukci|k rekonstrukci|ke kompletni rekonstrukci|spatn|demolic|rozestaven|havarij"),
+    (NOVY, r"novostavb|ve vystavbe|projekt|bezvadn|po rekonstrukci|po kompletni rekonstrukci"),
+    (DOBRY, r"velmi dobr|dobr|udrzovan"),
+]
+VYBAVA = {"bazén": r"bazen", "sauna": r"saun", "vířivka": r"virivk|whirlpool", "tepelné čerpadlo": r"tepeln\w* cerpadl",
+          "fotovoltaika": r"fotovolt|\bfve\b", "garáž": r"garaz", "klimatizace": r"klimatiz", "krb": r"\bkrb"}
+PODOBNYCH_MIN = 6
+# Postupné uvolňování: (užitná plocha ±, pozemek ×/÷, stejný stav, stejně Plzeň/okolí)
+STUPNE = [(0.25, 2.0, True, True), (0.25, None, True, True), (0.40, None, True, True), (0.40, None, True, False),
+          (0.40, None, False, True)]
+
+
+def _rok(b: dict, *nazvy: str) -> int | None:
+    for k, v in b.get("parametry") or []:
+        if bez_diakritiky(k) in nazvy:
+            m = re.search(r"\b(1[89]\d\d|20\d\d)\b", str(v))
+            if m:
+                return int(m.group(1))
+    return None
+
+
+def stav_domu(b: dict) -> tuple[str | None, str]:
+    """(třída stavu, čím je doložená) - rok rekonstrukce/výstavby, parametr webu, pak text inzerátu."""
+    letos = time.localtime().tm_year
+    rekonstrukce = _rok(b, "rekonstrukce", "rok rekonstrukce")
+    vystavba = _rok(b, "vystavba", "rok vystavby", "rok kolaudace")
+    if rekonstrukce and letos - 6 <= rekonstrukce <= letos + 1:
+        return NOVY, f"rekonstrukce {rekonstrukce}"
+    if vystavba and vystavba >= letos - 10:
+        return NOVY, f"postaven {vystavba}"
+    for k, v in b.get("parametry") or []:
+        if bez_diakritiky(k) in STAV_KLICE:
+            for trida, vzor in STAVY:
+                if re.search(vzor, bez_diakritiky(str(v))):
+                    return trida, str(v).strip().lower()
+    text = bez_diakritiky(f'{b.get("nazev") or ""} {b.get("popis") or ""}')
+    for trida, vzor in STAVY[:2]:  # „dobrý“ v textu nic neznamená („dobrá dostupnost“)
+        if re.search(vzor, text):
+            return trida, ""
+    return None, ""
+
+
+def vybava_domu(b: dict) -> list[str]:
+    text = bez_diakritiky(" ".join([b.get("nazev") or "", b.get("popis") or ""] +
+                                   [f"{k} {v}" for k, v in b.get("parametry") or []]))
+    return [n for n, vzor in VYBAVA.items() if re.search(vzor, text)]
+
+
+def _trh_domy(domy: list[dict], log):
+    """Cena vůči podobným domům: stejná třída stavu, podobná užitná plocha a pozemek, stejně Plzeň / okolí.
+    Odhad = medián ceny za m² podobných domů × plocha. Když podobných není dost, podmínky se postupně uvolní.
+    Doplní 'trh' = {odhad (Kč), popis (s čím se srovnává), n, stav, dolozeno, vybava, rozdil (záporný = levnější)}."""
+    ucet = [b for b in domy if b.get("cena") and 30 <= (b.get("plocha") or 0) <= 1000 and b["cena"] >= DUM_OD]
+    info = {id(b): (stav_domu(b), _v_plzni(b), b.get("pozemek") if (b.get("pozemek") or 0) >= 50 else None)
+            for b in domy}
+    hotovo = 0
+    for b in domy:
+        b.pop("trh", None)  # hrubé srovnání za m² všech domů zavádí - radši nic, než ho nechat
+        if not (b.get("cena") and 30 <= (b.get("plocha") or 0) <= 1000):
+            continue
+        (trida, dolozeno), plzen, poz = info[id(b)]
+        for velikost, pozemek, stejny_stav, stejne_misto in STUPNE:
+            if stejny_stav and trida is None:
+                continue  # neznámý stav: rovnou srovnat bez ohledu na stav
+            podobne = [o for o in ucet if o is not b
+                       and abs(o["plocha"] - b["plocha"]) <= velikost * b["plocha"]
+                       and (not stejny_stav or info[id(o)][0][0] == trida)
+                       and (not stejne_misto or info[id(o)][1] == plzen)
+                       and (pozemek is None or not poz or not info[id(o)][2]
+                            or poz / pozemek <= info[id(o)][2] <= poz * pozemek)]
+            if len(podobne) >= PODOBNYCH_MIN:
+                break
+        else:
+            continue
+        odhad = median(o["cena"] / o["plocha"] for o in podobne) * b["plocha"]
+        cast = ([MNOZNE[trida]] if stejny_stav else []) \
+            + [f'{round(b["plocha"] * (1 - velikost))}–{round(b["plocha"] * (1 + velikost))} m²'] \
+            + ([f'pozemek {round(poz / pozemek)}–{round(poz * pozemek)} m²'] if pozemek and poz else []) \
+            + ([("v Plzni" if plzen else "v okolí Plzně")] if stejne_misto else [])
+        popis = f'{len(podobne)} podobných domů ({", ".join(cast)})'
+        b["trh"] = {"odhad": round(odhad, -4), "popis": popis, "n": len(podobne),
+                    "stav": trida if stejny_stav else None, "dolozeno": dolozeno, "vybava": vybava_domu(b),
+                    "rozdil": round((b["cena"] - odhad) / odhad, 3)}
+        hotovo += 1
+    log(f"  trh: {hotovo} domů srovnáno s podobnými (stav, velikost, pozemek, Plzeň/okolí)")
 
 
 def _skupina(kat: str, b: dict) -> str:

@@ -30,6 +30,14 @@ od náměstí Republiky, se vyřadí podle souřadnic inzerátu, jinak podle pol
 - **Na stránce** (pamatuje si prohlížeč): druh / dispozice, okres, obec, cena do, plocha od–do,
   pozemek od (u domů), vzdálenost od centra; řazení podle novosti, ceny, velikosti, ceny za m²,
   vzdálenosti a doby v nabídce. Mapa ukazuje přesně to, co prošlo filtrem.
+- **Cena vůči podobným domům** (`_trh_domy` v `nemovitosti.py`): medián ceny za m² domů ve stejném stavu
+  (nové nebo po rekonstrukci / v dobrém stavu / k rekonstrukci – z parametru, roku rekonstrukce či výstavby,
+  nebo z textu), s užitnou plochou ±25 % a pozemkem ×/÷ 2, zvlášť Plzeň a okolí; když jich není aspoň 6,
+  podmínky se postupně uvolní. V detailu je vidět, s čím se srovnávalo.
+- **Oblíbené**: srdíčko na kartě i v detailu, přepínač „Oblíbené“ v liště. Pamatuje si je prohlížeč
+  (každé zařízení zvlášť).
+- **Fotky přes celou obrazovku**: tlačítko v rohu fotky nebo klik na fotku v detailu.
+- **AI** (`ai.py`): u varování se nikdy nepíše „podvod“, ale klidně, co si ověřit („⚠ k ověření“).
 
 ## Spuštění
 

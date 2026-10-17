@@ -49,7 +49,10 @@ není vidět, a stručně česky odpověz. Pravidla:
   vysoký fond oprav, prodává realitka ač tvrdí opak, pozemek bez sítí nebo přístupové cesty, záplavové území).
 - "varovani": vyplň JEN při vážném podezření (znaky podvodu - záloha předem, prodejce v zahraničí, jen e-mail;
   exekuce, věcné břemeno/dožití, jen spoluvlastnický podíl, družstevní byt bez převodu, nestavební pozemek
-  vydávaný za stavební); jinak null.
+  vydávaný za stavební); jinak null. Zobrazí se kupujícímu, proto ho napiš klidně jako radu, CO si ověřit
+  (např. "nic neplatit předem, prohlídku domluvit osobně", "ověřit v katastru, zda jde o celý dům, ne podíl").
+  Nikdy nepoužívej slova podvod, podvodník, podvodný ani nikoho neobviňuj.
+- Ani v ostatních položkách nepiš slovo podvod; místo toho popiš, co ověřit.
 Odpověz jen JSON s položkou pro KAŽDÝ inzerát:
 {{"inzeraty": [{{"k": "<klíč>", "shrnuti": "...", "plusy": [...], "rizika": [...], "varovani": null}}]}}"""
 
@@ -153,12 +156,21 @@ def _inzerat(k: str, i: dict, kat: str) -> str:
     return json.dumps({k: v for k, v in udaje.items() if v not in (None, "", [])}, ensure_ascii=False)
 
 
+OVERIT = "nic neplatit předem, prodejce a nemovitost ověřit osobně a v katastru"  # místo textu se slovem „podvod“
+
+
+def _slusne(t: str) -> str:
+    """Na stránku nepatří „podvod“ (přání uživatele) - AI to má zakázané, tohle je pojistka."""
+    return OVERIT if re.search(r"podvod", t, re.I) else t
+
+
 def _cisti(v: dict) -> dict:
-    seznam = lambda x: [str(s).strip() for s in x if str(s).strip()][:3] if isinstance(x, list) else []  # noqa: E731
+    seznam = lambda x: [_slusne(str(s).strip()) for s in x if str(s).strip()][:3] if isinstance(x, list) else []  # noqa: E731
     varovani = v.get("varovani")
-    return {"shrnuti": str(v.get("shrnuti") or "").strip(), "plusy": seznam(v.get("plusy")),
+    return {"shrnuti": _slusne(str(v.get("shrnuti") or "").strip()), "plusy": seznam(v.get("plusy")),
             "rizika": seznam(v.get("rizika")),
-            "varovani": str(varovani).strip() if varovani and str(varovani).strip().lower() not in ("null", "none") else None}
+            "varovani": _slusne(str(varovani).strip())
+            if varovani and str(varovani).strip().lower() not in ("null", "none") else None}
 
 
 def dopln(c, kat: str, inzeraty: list[dict], popis_hledani: str, log=print) -> None:

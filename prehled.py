@@ -78,6 +78,10 @@ def _zlevneni(i: dict) -> int:
 
 def _trh_text(t: dict) -> str:
     proc = round(abs(t["rozdil"]) * 100)
+    if "odhad" in t:  # domy: srovnání s podobnými domy (nemovitosti._trh_domy)
+        if proc < 5:
+            return "cena jako u podobných domů"
+        return f"o {proc} % {'levnější' if t['rozdil'] < 0 else 'dražší'} než podobné domy"
     if proc < 3:
         return f"cena za m² jako průměr ({t['zaklad']})"
     return f"o {proc} % {'pod' if t['rozdil'] < 0 else 'nad'} průměrem ({t['zaklad']})"
@@ -90,6 +94,8 @@ def data(i: dict) -> dict:
     if len(popis) > MAX_POPIS:
         popis = popis[:MAX_POPIS].rsplit(" ", 1)[0] + " …"
     return {
+        # všechna id (i sloučených duplicit) - oblíbené drží, i když se hlavním inzerátem stane jiný web
+        "ids": [i["id"]] + [x for x in i.get("dalsi_id") or [] if x != i["id"]],
         "nazev": i["nazev"], "cena": i.get("cena"), "zlevneno": _zlevneno(i), "zlevneni": _zlevneni(i),
         "novy": bool(i.get("novy")), "druh": i.get("druh") or "", "dispozice": i.get("dispozice") or "",
         "plocha": i.get("plocha"), "pozemek": i.get("pozemek"),
@@ -250,6 +256,7 @@ def html(sekce_data: list[tuple], ted: str, mobil_url: str | None = None, akce_u
     <option value="-plocha">největší</option><option value="plocha">nejmenší</option><option value="m2">nejnižší cena za m²</option>
     <option value="km">nejblíž centru</option><option value="dni">nejdéle v nabídce</option></select></label>
   <label class="switch"><input type="checkbox" id="jenNove"><span></span>Jen nové</label>
+  <label class="switch"><input type="checkbox" id="jenObl"><span></span>Oblíbené <b class="obl-pocet" id="oblPocet"></b></label>
 </div></div></div>
 <main class="wrap">{obsah}</main>
 <footer class="foot wrap">Hledač nemovitostí{f' pro {escape(jmeno)}' if jmeno else ''} · {", ".join(nemovitosti.WEBY)} · staženo {d.day}. {d.month}. {d.year} v {d:%H:%M} · mapa © OpenStreetMap</footer>
@@ -464,6 +471,15 @@ font:400 26px/1 Inter,sans-serif;color:var(--navy);background:rgba(255,255,255,.
 .stage{position:relative;aspect-ratio:4/3;display:grid;place-items:center;overflow:hidden;touch-action:pan-y}
 .stage img{max-width:100%;max-height:100%;object-fit:contain;display:block;transition:opacity .25s ease}
 .stage img.skryto{opacity:0}
+.stage img{cursor:zoom-in}.stage.full img{cursor:zoom-out}
+.full-btn{position:absolute;top:14px;left:14px;z-index:3;width:40px;height:40px;border:0;border-radius:50%;cursor:pointer;
+display:grid;place-items:center;background:rgba(16,37,28,.7);color:#fff;transition:background .15s}
+.full-btn:hover{background:rgba(16,37,28,.9)}.full-btn svg{width:20px;height:20px}
+.full-btn .dovnitr,.stage.full .full-btn .ven{display:none}.stage.full .full-btn .dovnitr{display:inline}
+/* přes celou obrazovku: nativně (Fullscreen API), kde to prohlížeč neumí (iPhone), aspoň přes celé okno */
+.stage.full{position:fixed;inset:0;z-index:30;aspect-ratio:auto;width:100vw;height:100dvh;background:#000}
+.stage.full img{width:100vw;height:100dvh;max-width:none;max-height:none;object-fit:contain}
+.stage.full .full-btn{top:max(14px,env(safe-area-inset-top));left:auto;right:14px}
 .stage .nav{opacity:.95;transform:translateY(-50%);width:46px;height:46px;font-size:26px;top:50%}
 .stage .nav.prev{left:16px}.stage .nav.next{right:16px}
 .stage .counter{position:absolute;bottom:14px;right:14px;font-size:12px;font-weight:600;color:#fff;background:rgba(16,37,28,.7);
@@ -541,11 +557,18 @@ color:var(--navy);font-size:12.5px;line-height:1.45}
 .ai-lbl{flex:none;display:inline-flex;align-items:center;gap:3px;padding:1px 7px 1px 5px;border-radius:99px;background:var(--navy);
 color:#fff;font:800 10.5px/1.6 "Plus Jakarta Sans",Inter,sans-serif;letter-spacing:.06em}.ai-lbl svg{width:11px;height:11px}
 .card .ai span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.badge-ai{background:#fbe3df;color:#8a2a1c}
+.badge-ai{background:#fbf0d9;color:#7a5410}
+.srdce{position:absolute;top:10px;right:10px;z-index:3;width:38px;height:38px;border:0;border-radius:50%;cursor:pointer;
+display:grid;place-items:center;background:rgba(255,255,255,.88);color:#8a8578;box-shadow:0 2px 8px rgba(0,0,0,.18);transition:transform .15s,color .15s}
+.srdce svg{width:20px;height:20px}.srdce:hover{transform:scale(1.1)}.srdce.on{color:#d0443a}.srdce.on svg{fill:currentColor}
+.srdce:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dlg .srdce{position:static;width:auto;height:auto;border-radius:99px;padding:8px 14px;gap:6px;display:inline-flex;align-items:center;
+font:600 14px/1 Inter,sans-serif;box-shadow:none;border:1px solid #d8d2c4;background:var(--surface)}
+.obl-pocet{font-weight:700;color:#d0443a}.obl-pocet:empty{display:none}
 .ai-blok{padding:12px 14px;border-radius:14px;background:var(--accent-soft);border:1px solid #c6dfcf}
 .ai-blok h4{display:flex;align-items:center;gap:6px;margin:0 0 6px;font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--accent)}
 .ai-shrnuti{margin:0 0 8px;font-size:14px;font-weight:600;color:var(--navy)}
-.ai-varovani{margin:0 0 8px;padding:8px 10px;border-radius:10px;background:#fbe3df;color:#8a2a1c;font-size:13px;font-weight:600}
+.ai-varovani{margin:0 0 8px;padding:8px 10px;border-radius:10px;background:#fbf0d9;color:#7a5410;font-size:13px;font-weight:600}
 .ai-blok .proc{font-size:13px;margin-bottom:8px}.ai-blok small{font-size:11.5px;color:var(--muted)}
 
 /* stav webů */
@@ -651,7 +674,8 @@ DETAIL_SABLONA = """<dialog id="detail" aria-label="Detail inzerátu"><div class
   <div class="gal">
     <div class="stage"><img id="dImg" alt="" referrerpolicy="no-referrer"><div class="bezfotek" hidden>__IKONA_FOTO__<span>Inzerát nemá fotky</span></div>
       <button class="nav prev" data-krok="-1" aria-label="Předchozí fotka">‹</button>
-      <button class="nav next" data-krok="1" aria-label="Další fotka">›</button><span class="counter"></span></div>
+      <button class="nav next" data-krok="1" aria-label="Další fotka">›</button><span class="counter"></span>
+      <button type="button" class="full-btn" aria-label="Fotky přes celou obrazovku" title="Přes celou obrazovku"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path class="ven" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><path class="dovnitr" d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
     <div class="thumbs"></div>
     <div class="kontakt">
       <a class="btn volat" id="dVolat">__IKONA_TEL__<span>Volat prodejci</span></a>
@@ -663,6 +687,7 @@ DETAIL_SABLONA = """<dialog id="detail" aria-label="Detail inzerátu"><div class
     <div class="tagline"></div>
     <h2></h2>
     <div class="price"></div>
+    <div><button type="button" class="srdce" id="dSrdce"></button></div>
     <div class="ai-blok dAi"><h4><b class="ai-lbl">__IKONA_AI__AI</b>Postřeh umělé inteligence</h4><p class="ai-shrnuti"></p><div class="ai-varovani"></div>
       <ul class="proc"></ul><small>Z textu inzerátu, automaticky (Google Gemini, zdarma). Může se mýlit – ber jako tip, co ověřit.</small></div>
     <div class="fakta dFakta"></div>
@@ -695,7 +720,19 @@ const POCET=48,OKRUH_KM=D.okruh/1000;
 
 // --- stav filtrů (pamatuje si ho prohlížeč) ---
 const VYCHOZI=()=>({druh:[],okres:[],obec:'',cena:'',od:'',do:'',poz:'',km:OKRUH_KM});
-let F={},razeni='novy',jenNove=false,jenZlev=false;
+let F={},razeni='novy',jenNove=false,jenZlev=false,jenObl=false;
+// --- oblíbené: id inzerátů v tomto prohlížeči (na každém zařízení zvlášť) ---
+const SRDCE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.4C1.4 7.6 3.6 4 7.2 4c2 0 3.6 1.1 4.8 2.8C13.2 5.1 14.8 4 16.8 4c3.6 0 5.8 3.6 4.5 7.1-1.8 4.8-9.3 9.4-9.3 9.4z"/></svg>';
+let OBL=new Set();try{OBL=new Set(JSON.parse(localStorage.getItem('hledac-plzen-oblibene'))||[])}catch(e){}
+const oblibeny=d=>d.ids.some(x=>OBL.has(x));
+function prepniObl(d){const ma=oblibeny(d);d.ids.forEach(x=>ma?OBL.delete(x):null);if(!ma)OBL.add(d.ids[0]);
+  try{localStorage.setItem('hledac-plzen-oblibene',JSON.stringify([...OBL]))}catch(e){}
+  $$('.card').forEach(k=>{if(polozka(k)===d)srdceStav(k.querySelector('.srdce'),!ma)});
+  if(akt===d)srdceStav($('#dSrdce'),!ma,true);oblPocet();if(jenObl&&ma)Object.keys(stav).forEach(prekresli)}
+function srdceStav(b,on,text){if(!b)return;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);
+  b.title=on?'Odebrat z oblíbených':'Přidat do oblíbených';b.setAttribute('aria-label',b.title);
+  b.innerHTML=SRDCE+(text?'<span>'+(on?'V oblíbených':'Do oblíbených')+'</span>':'')}
+function oblPocet(){const n=Object.values(DATA).flat().filter(oblibeny).length;$('#oblPocet').textContent=n||''}
 try{F=JSON.parse(localStorage.getItem('hledac-plzen-filtry'))||{}}catch(e){}
 Object.keys(DATA).forEach(k=>F[k]=Object.assign(VYCHOZI(),F[k]||{}));
 try{razeni=localStorage.getItem('hledac-plzen-razeni')||'novy'}catch(e){}
@@ -736,7 +773,7 @@ function sestav(kat){const s=$('#s-'+kat),fp=s&&s.querySelector('.filtry');if(!f
   if('IntersectionObserver' in window)new IntersectionObserver(z=>{if(z[0].isIntersecting&&!dl.hidden)pridej(kat)},{rootMargin:'600px 0px'}).observe(dl)}
 
 function projde(kat,d){const f=F[kat];
-  if(jenNove&&!d.novy)return false;if(jenZlev&&!d.zlevneno)return false;
+  if(jenNove&&!d.novy)return false;if(jenZlev&&!d.zlevneno)return false;if(jenObl&&!oblibeny(d))return false;
   if(f.druh.length&&!f.druh.includes(skupina(kat,d)))return false;
   if(f.okres.length&&!f.okres.includes(d.okres||'neuvedeno'))return false;
   if(f.obec&&!bezd(d.obec+' '+d.cast+' '+d.misto).includes(bezd(f.obec.trim())))return false;
@@ -746,6 +783,8 @@ function projde(kat,d){const f=F[kat];
   if(f.km<OKRUH_KM&&!(d.vzdalenost!=null&&d.vzdalenost<=f.km*1000))return false;
   return true}
 const M2=d=>d.cena&&d.plocha?d.cena/d.plocha:null;
+// u domů (srovnání s podobnými) je ±5 % běžný rozptyl, jinak ±3 %
+const trhTrida=t=>{const m=t.odhad?0.05:0.03;return t.rozdil<=-m?' dobre':t.rozdil>=m?' spatne':''};
 const vzest=v=>v==null?Infinity:v,sest=v=>v==null?-Infinity:v;
 const RAZENI={
   novy:(a,b)=>(b.novy-a.novy)||(vzest(a.dni)-vzest(b.dni))||(b.odkazy.length-a.odkazy.length)||(b.fotky.length-a.fotky.length),
@@ -775,7 +814,8 @@ function karta(kat,i){const d=DATA[kat][i],f=d.fotky,b=[];
   if(d.novy)b.push('<span class="badge badge-new"><i></i>Nové</span>');
   if(d.zlevneno)b.push('<span class="badge badge-drop">↓ '+kc(d.zlevneno)+(d.zlevneni>1?' · '+d.zlevneni+'×':'')+'</span>');
   if(d.znovu)b.push('<span class="badge badge-znovu" title="Stejnou nemovitost Hledač viděl už v dřívějším inzerátu">↻ znovu vložené</span>');
-  if(d.ai&&d.ai.varovani)b.push('<span class="badge badge-ai" title="'+esc(d.ai.varovani)+'">⚠ AI varuje</span>');
+  if(d.ai&&d.ai.varovani)b.push('<span class="badge badge-ai" title="'+esc(d.ai.varovani)+'">⚠ k ověření</span>');
+  const obl=oblibeny(d),srdce='<button type="button" class="srdce'+(obl?' on':'')+'" aria-pressed="'+obl+'" title="'+(obl?'Odebrat z oblíbených':'Přidat do oblíbených')+'" aria-label="'+(obl?'Odebrat z oblíbených':'Přidat do oblíbených')+'">'+SRDCE+'</button>';
   const foto=f.length?'<img src="'+esc(f[0])+'" loading="lazy" referrerpolicy="no-referrer" alt="">':'<div class="nophoto">'+FOTO+'<span>bez fotek</span></div>';
   const listovani=f.length>1?'<button class="nav prev" data-krok="-1" aria-label="Předchozí fotka">‹</button><button class="nav next" data-krok="1" aria-label="Další fotka">›</button><div class="dots">'+'<i></i>'.repeat(Math.min(f.length,5))+'</div>':'';
   const m2=M2(d),podcena=m2?'<small>'+fmt(m2)+' Kč/m²</small>':'';
@@ -784,13 +824,13 @@ function karta(kat,i){const d=DATA[kat][i],f=d.fotky,b=[];
   const hruba=d.gps_odhad==='obec'||d.gps_odhad==='PSČ';
   // poloha jen podle obce: u samotné Plzně by vyšlo „27 m od centra“ - nic neříká, tak se neukazuje
   if(d.vzdalenost!=null&&!(hruba&&d.vzdalenost<2000))chips+='<span class="chip hl">'+CIL+(hruba?'asi ':'')+kmT(d.vzdalenost)+' od centra</span>';
-  if(d.trh)chips+='<span class="chip '+(d.trh.rozdil<=-0.03?'dobre':d.trh.rozdil>=0.03?'spatne':'')+'">'+esc(d.trh_text)+'</span>';
+  if(d.trh)chips+='<span class="chip'+trhTrida(d.trh)+'" title="'+esc(d.trh.popis?'Srovnáno s '+d.trh.popis:'')+'">'+esc(d.trh_text)+'</span>';
   const ai=d.ai&&d.ai.shrnuti?'<p class="ai" title="Napsala umělá inteligence z textu inzerátu – může se mýlit"><b class="ai-lbl">AI</b><span>'+esc(d.ai.shrnuti)+'</span></p>':'';
   const misto=esc(d.obec||d.misto||'')+(d.cast&&d.cast!==d.obec?', '+esc(d.cast):'')+(d.okres?'<small>okres '+esc(d.okres)+'</small>':'');
   const dni=d.dni_text?'<span class="seen'+(d.dni>=60?' dlouho':'')+'">'+esc(d.dni_text)+'</span>':'<span class="seen"></span>';
   const zdroje=d.odkazy.map(([z,u])=>'<a class="src" href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(z)+VEN+'</a>').join('');
   return '<article class="card" data-k="'+kat+'" data-i="'+i+'"><div class="media" data-open title="Otevřít detail">'+foto+'<div class="shade"></div>'+listovani
-    +'<div class="badges">'+b.join('')+'</div><div class="overlay"><div class="price">'+kc(d.cena)+podcena+'</div><div class="loc">'+MISTO+misto+'</div></div></div>'
+    +'<div class="badges">'+b.join('')+'</div>'+srdce+'<div class="overlay"><div class="price">'+kc(d.cena)+podcena+'</div><div class="loc">'+MISTO+misto+'</div></div></div>'
     +'<div class="body"><h3><a href="'+esc(d.url)+'" data-open>'+esc(d.nazev)+'</a></h3>'
     +(udaje.length?'<p class="radek">'+udaje.map(u=>'<span>'+esc(u)+'</span>').join('<i>·</i>')+'</p>':'')
     +(chips?'<div class="chips">'+chips+'</div>':'')+ai+'</div><footer>'+dni+'<span class="srcs">'+zdroje+'</span></footer></article>'}
@@ -814,6 +854,8 @@ document.addEventListener('error',e=>{const img=e.target;if(!(img.tagName==='IMG
   if(d.fotky.length)fotkaKarty(k,k._i||0);else{img.replaceWith(Object.assign(el('div','nophoto'),{innerHTML:FOTO+'<span>bez fotek</span>'}));m.classList.add('nacteno')}
   if(d.fotky.length<2)k.querySelectorAll('.nav,.dots').forEach(x=>x.remove())},true);
 document.addEventListener('click',e=>{
+  const sr=e.target.closest('.card .srdce');
+  if(sr){e.preventDefault();e.stopPropagation();prepniObl(polozka(sr.closest('.card')));return}
   const nav=e.target.closest('.card .nav');
   if(nav){e.preventDefault();e.stopPropagation();const k=nav.closest('.card');fotkaKarty(k,(k._i||0)+ +nav.dataset.krok);return}
   const o=e.target.closest('.card [data-open]');
@@ -838,6 +880,7 @@ tabs.forEach(b=>b.onclick=()=>prepni(b.dataset.t));
 addEventListener('resize',posunInd);document.fonts&&document.fonts.ready.then(posunInd);
 const rz=$('#razeni');rz.value=razeni;rz.onchange=()=>{razeni=rz.value;Object.keys(stav).forEach(prekresli)};
 $('#jenNove').onchange=e=>{jenNove=e.target.checked;jenZlev=false;Object.keys(stav).forEach(prekresli)};
+$('#jenObl').onchange=e=>{jenObl=e.target.checked;Object.keys(stav).forEach(prekresli)};oblPocet();
 $$('.stat.klik').forEach(t=>{const klik=()=>{if(t.dataset.filtr==='novy'){jenNove=!jenNove;jenZlev=false}else{jenZlev=!jenZlev;jenNove=false}
     $('#jenNove').checked=jenNove;Object.keys(stav).forEach(prekresli);
     scrollTo({top:$('main').getBoundingClientRect().top+scrollY-$('#toolbar').offsetHeight,behavior:'smooth'})};
@@ -900,15 +943,19 @@ function otevri(d,start){akt=d;
   if(d.druh)tl.append(el('span','',d.druh));
   dlg.querySelector('h2').textContent=d.nazev;
   const p=dlg.querySelector('.price'),m2=M2(d);p.textContent=kc(d.cena);if(m2)p.append(el('small','',fmt(m2)+' Kč/m²'));
+  srdceStav($('#dSrdce'),oblibeny(d),true);
   const ab=dlg.querySelector('.dAi');ab.hidden=!(d.ai&&d.ai.shrnuti);
   if(!ab.hidden){ab.querySelector('.ai-shrnuti').textContent=d.ai.shrnuti;const av=ab.querySelector('.ai-varovani');
-    av.hidden=!d.ai.varovani;av.textContent='⚠ '+(d.ai.varovani||'');
+    av.hidden=!d.ai.varovani;av.textContent='Před koupí ověřit: '+(d.ai.varovani||'');
     ab.querySelector('.proc').replaceChildren(...d.ai.plusy.map(t=>el('li','plus',t)),...d.ai.rizika.map(t=>el('li','minus',t)))}
   const fk=[];if(d.dispozice)fk.push(fakt('dispozice',d.dispozice));if(d.plocha)fk.push(fakt('plocha',fmt(d.plocha)+' m²'));
   if(d.pozemek)fk.push(fakt('pozemek','pozemek '+fmt(d.pozemek)+' m²'));
   if(d.vzdalenost!=null&&!((d.gps_odhad==='obec'||d.gps_odhad==='PSČ')&&d.vzdalenost<2000))fk.push(fakt('km',kmT(d.vzdalenost)+' od centra'));if(d.okres)fk.push(fakt('okres','okres '+d.okres));
-  if(d.trh_text){const x=el('div','fakt trh'+(d.trh.rozdil<=-0.03?' dobre':d.trh.rozdil>=0.03?' spatne':''));
-    x.textContent=d.trh_text[0].toUpperCase()+d.trh_text.slice(1)+' – průměr '+fmt(d.trh.median)+' Kč/m² z '+d.trh.n+' inzerátů';fk.push(x)}
+  if(d.trh_text){const x=el('div','fakt trh'+trhTrida(d.trh));
+    x.textContent=d.trh_text[0].toUpperCase()+d.trh_text.slice(1)+(d.trh.odhad
+      ?' – odhad '+fmt(d.trh.odhad)+' Kč podle '+d.trh.popis+(d.trh.dolozeno?'. Stav: '+d.trh.dolozeno:'')
+        +(d.trh.vybava&&d.trh.vybava.length?'. Vybavení: '+d.trh.vybava.join(', '):'')
+      :' – průměr '+fmt(d.trh.median)+' Kč/m² z '+d.trh.n+' inzerátů');fk.push(x)}
   dlg.querySelector('.dFakta').replaceChildren(...fk);
   const kde=d.gps_odhad==='obec'||d.gps_odhad==='PSČ'?'na mapě jen poloha obce':d.gps_odhad?'poloha podle ulice':'';
   dlg.querySelector('.dMisto').textContent=[d.misto,d.dni_text,kde].filter(Boolean).join(' · ');
@@ -928,10 +975,23 @@ function otevri(d,start){akt=d;
   thumbs.replaceChildren(...d.fotky.map((f,j)=>{const b=el('button');b.type='button';b.dataset.j=j;b.setAttribute('aria-label','Fotka '+(j+1));
     const im=el('img');im.loading='lazy';im.referrerPolicy='no-referrer';im.src=f;b.append(im);return b}));
   thumbs.hidden=d.fotky.length<2;dlg.querySelectorAll('.stage .nav,.stage .counter').forEach(x=>x.hidden=d.fotky.length<2);
+  dlg.querySelector('.full-btn').hidden=!d.fotky.length;
   ukaz(start);if(!dlg.open)dlg.showModal();dlg.scrollTop=0}
 thumbs.addEventListener('click',e=>{const b=e.target.closest('button');if(b)ukaz(+b.dataset.j)});
 dlg.querySelectorAll('.stage .nav').forEach(b=>b.onclick=()=>ukaz(ai+ +b.dataset.krok));
 dlg.querySelector('.close').onclick=()=>dlg.close();
+// --- fotky přes celou obrazovku (šipky, klávesy a tažení prstem fungují i tam) ---
+const jeFull=()=>st.classList.contains('full');
+function celaObr(zap){st.classList.toggle('full',zap);const fs=document.fullscreenElement||document.webkitFullscreenElement;
+  try{if(zap&&!fs)(st.requestFullscreen||st.webkitRequestFullscreen||(()=>{})).call(st)?.catch?.(()=>{});
+    if(!zap&&fs)(document.exitFullscreen||document.webkitExitFullscreen).call(document)?.catch?.(()=>{})}catch(e){}}
+dlg.querySelector('.full-btn').onclick=()=>celaObr(!jeFull());
+dImg.addEventListener('click',()=>celaObr(!jeFull()));
+['fullscreenchange','webkitfullscreenchange'].forEach(t=>document.addEventListener(t,()=>{
+  if(!(document.fullscreenElement||document.webkitFullscreenElement))st.classList.remove('full')}));
+dlg.addEventListener('cancel',e=>{if(jeFull()){e.preventDefault();celaObr(false)}});  // Esc nejdřív zmenší fotku
+dlg.addEventListener('close',()=>celaObr(false));
+$('#dSrdce').onclick=()=>{if(akt)prepniObl(akt)};
 dlg.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
 dlg.addEventListener('keydown',e=>{if(e.key==='ArrowRight')ukaz(ai+1);if(e.key==='ArrowLeft')ukaz(ai-1)});
 let tx=null;const st=dlg.querySelector('.stage');
