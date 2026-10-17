@@ -96,7 +96,7 @@ def data(i: dict) -> dict:
     return {
         # všechna id (i sloučených duplicit) - oblíbené drží, i když se hlavním inzerátem stane jiný web
         "ids": [i["id"]] + [x for x in i.get("dalsi_id") or [] if x != i["id"]],
-        "nazev": i["nazev"], "cena": i.get("cena"), "zlevneno": _zlevneno(i), "zlevneni": _zlevneni(i),
+        "stav": nemovitosti.stav_domu(i)[0], "nazev": i["nazev"], "cena": i.get("cena"), "zlevneno": _zlevneno(i), "zlevneni": _zlevneni(i),
         "novy": bool(i.get("novy")), "druh": i.get("druh") or "", "dispozice": i.get("dispozice") or "",
         "plocha": i.get("plocha"), "pozemek": i.get("pozemek"),
         "obec": (i.get("mesto") or "").strip(), "cast": i.get("cast") or "", "okres": i.get("okres") or "",
@@ -127,15 +127,8 @@ def _statistiky(kat: str, inz: list[dict], aktivni: bool) -> str:
     return f'<div class="stats" data-t="{kat}" {"" if aktivni else "hidden"}>{polozky}</div>'
 
 
-def _hledam(kat: str) -> str:
-    return '<div class="criteria">' + "".join(
-        '<div class="crit"><span class="lbl">Co hledám</span>' + "".join(
-            f'<span class="chip">{escape(p)}</span>' for p in parametry) + "</div>"
-        for _, parametry in nemovitosti.POPIS[kat]) + "</div>"
-
-
 def _stav_webu(weby: list[dict]) -> str:
-    """Panel: který web jak odpověděl a kolik vrátil - změna struktury webu se pozná hned (0 nebo chyba)."""
+    """Nenápadně v patičce: který web jak odpověděl a kolik vrátil - změna struktury webu se pozná (0 nebo chyba)."""
     if not weby:
         return ""
     chyby = [w for w in weby if not w.get("ok")]
@@ -152,33 +145,47 @@ def _stav_webu(weby: list[dict]) -> str:
         popis = (escape(w.get("chyba", "")[:90]) if not w.get("ok")
                  else f'{cislo(w.get("pocet", 0))} staženo · {cislo(w.get("vybrano", 0))} v okruhu a do ceny')
         radky.append(f'<tr class="{stav}"><td><i></i>{escape(w["nazev"])}</td><td>{popis}</td><td>{w.get("sekund", 0)} s</td></tr>')
-    return (f'<details class="weby {trida}"><summary><span class="dot"></span>Stav webů: {souhrn}</summary>'
+    return (f'<details class="weby {trida}"><summary><span class="dot"></span>Weby: {souhrn}</summary>'
             f'<table>{"".join(radky)}</table></details>')
 
 
+def _rozsah(nazev: str, od: str, do: str, jednotka: str, krok: str) -> str:
+    vstup = (lambda k, p: f'<input type="number" class="f-{k}" min="0" step="{krok}" inputmode="decimal" placeholder="{p}" '
+                          f'aria-label="{nazev} {p}">')
+    return (f'<div class="rozsah"><span class="lbl">{nazev} <small>({jednotka})</small></span>'
+            f'<div>{vstup(od, "od")}<i>–</i>{vstup(do, "do")}</div></div>')
+
+
 def _filtry(kat: str) -> str:
-    """Kostra panelu filtrů; štítky druhů, okresů a seznam obcí doplní prohlížeč podle dat."""
-    ceny = "".join(f'<option value="{c * 1_000_000}">{c} mil. Kč</option>' for c in CENY_DO)
-    pozemek = ('<label class="pole"><span>Pozemek od</span><input type="number" class="f-poz" min="0" step="50" '
-               'inputmode="numeric" placeholder="m²"></label>') if kat == "domy" else ""
+    """Jednoduchý filtr: hledání obce, zapnuté filtry jako štítky (× zruší), „Filtr“ rozbalí všechny možnosti
+    s vlastními hodnotami; nastavení jde uložit pod jménem („Moje filtry“). Štítky voleb doplní prohlížeč podle dat."""
     velikost = "Plocha pozemku" if kat == "pozemky" else "Užitná plocha"
+    domy = kat == "domy"
     return f"""<div class="filtry" data-t="{kat}">
-  <div class="f-radek"><span class="lbl">{"Dispozice" if kat == "byty" else "Druh"}</span><div class="volby f-druh"></div></div>
-  <div class="f-radek"><span class="lbl">Okres</span><div class="volby f-okres"></div></div>
-  <div class="f-pole">
-    <label class="pole obec"><span>Obec / město</span><input type="search" class="f-obec" list="obce-{kat}" placeholder="např. Chotíkov" autocomplete="off"><datalist id="obce-{kat}"></datalist></label>
-    <label class="pole"><span>Cena do</span><select class="f-cena"><option value="">bez omezení</option>{ceny}</select></label>
-    <label class="pole"><span>{velikost} od</span><input type="number" class="f-od" min="0" step="10" inputmode="numeric" placeholder="m²"></label>
-    <label class="pole"><span>do</span><input type="number" class="f-do" min="0" step="10" inputmode="numeric" placeholder="m²"></label>
-    {pozemek}
-    <label class="pole km"><span>Od centra Plzně do <output class="f-km-v">{oblast.OKRUH_KM} km</output></span><input type="range" class="f-km" min="1" max="{oblast.OKRUH_KM}" step="1" value="{oblast.OKRUH_KM}"></label>
-    <button type="button" class="f-reset">Zrušit filtry</button>
+  <div class="f-lista">
+    <label class="f-hledat">{IKONA_MISTO}<input type="search" class="f-obec" list="obce-{kat}" placeholder="Obec nebo město" autocomplete="off" aria-label="Obec nebo město"><datalist id="obce-{kat}"></datalist></label>
+    <div class="f-aktivni"></div>
+    <button type="button" class="f-otevrit" aria-expanded="false">{IKONA_FILTR}<span>Filtr</span><b class="f-pocet-akt"></b></button>
+  </div>
+  <div class="f-moje" hidden><span class="lbl">Moje filtry</span><div class="f-presety"></div></div>
+  <div class="f-panel" hidden>
+    <div class="f-mrizka">
+      {_rozsah("Cena", "cenaOd", "cenaDo", "mil. Kč", "0.1")}
+      {_rozsah(velikost, "od", "do", "m²", "10")}
+      {_rozsah("Pozemek", "pozOd", "pozDo", "m²", "50") if domy else ""}
+      <div class="rozsah km"><span class="lbl">Od centra Plzně do <output class="f-km-v">{oblast.OKRUH_KM} km</output></span><input type="range" class="f-km" min="1" max="{oblast.OKRUH_KM}" step="1" value="{oblast.OKRUH_KM}" aria-label="Vzdálenost od centra"></div>
+    </div>
+    <div class="f-radek"><span class="lbl">Okres</span><div class="volby f-okres" data-klic="okres"></div></div>
+    <div class="f-radek"><span class="lbl">{"Dispozice" if kat == "byty" else "Druh"}</span><div class="volby f-druh" data-klic="druh"></div></div>
+    {'<div class="f-radek"><span class="lbl">Stav</span><div class="volby f-stav" data-klic="stav"></div></div>' if domy else ""}
+    {'<div class="f-radek"><span class="lbl">Cena vůči podobným</span><div class="volby f-trh" data-klic="trh"></div></div>' if domy else ""}
+    <div class="f-akce"><button type="button" class="f-reset">Zrušit filtry</button><button type="button" class="f-ulozit">Uložit jako můj filtr</button><button type="button" class="f-hotovo">Hotovo</button></div>
   </div>
 </div>"""
 
 
 def sekce(kat: str, inz: list[dict], hlasky: list[str], weby: list[dict], aktivni: bool) -> str:
-    chyby = "".join(f'<div class="error">⚠ {escape(h)}</div>' for h in hlasky)
+    # hlášky (chyby webů) jsou v přehledu webů v patičce, ne nahoře
     if inz:
         obsah = (f'{_filtry(kat)}<div class="vysledek"><span class="f-pocet"></span>'
                  f'<button type="button" class="mapa-prepinac" aria-pressed="true">{IKONA_MAPA}<span>Mapa</span></button></div>'
@@ -188,8 +195,7 @@ def sekce(kat: str, inz: list[dict], hlasky: list[str], weby: list[dict], aktivn
     else:
         obsah = (f'<div class="empty"><div class="pulse">{IKONY_KAT[kat]}</div><h3>Zatím nic</h3>'
                  f'<p>{escape(PRAZDNO[kat])}</p></div>')
-    return (f'<section id="s-{kat}" data-t="{kat}" {"" if aktivni else "hidden"}>'
-            f'<div class="info-radek">{_hledam(kat)}{_stav_webu(weby)}</div>{chyby}{obsah}</section>')
+    return f'<section id="s-{kat}" data-t="{kat}" {"" if aktivni else "hidden"}>{obsah}</section>'
 
 
 def html(sekce_data: list[tuple], ted: str, mobil_url: str | None = None, akce_url: str | None = None,
@@ -259,7 +265,7 @@ def html(sekce_data: list[tuple], ted: str, mobil_url: str | None = None, akce_u
   <label class="switch"><input type="checkbox" id="jenObl"><span></span>Oblíbené <b class="obl-pocet" id="oblPocet"></b></label>
 </div></div></div>
 <main class="wrap">{obsah}</main>
-<footer class="foot wrap">Hledač nemovitostí{f' pro {escape(jmeno)}' if jmeno else ''} · {", ".join(nemovitosti.WEBY)} · staženo {d.day}. {d.month}. {d.year} v {d:%H:%M} · mapa © OpenStreetMap</footer>
+<footer class="foot wrap">{"".join(_stav_webu(weby) for _, _, _, weby in sekce_data[:1])}<span>Hledač nemovitostí{f' pro {escape(jmeno)}' if jmeno else ''} · {", ".join(nemovitosti.WEBY)} · staženo {d.day}. {d.month}. {d.year} v {d:%H:%M} · mapa © OpenStreetMap</span></footer>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 {DETAIL}
 <script type="application/json" id="data">{json_data}</script>
@@ -654,6 +660,48 @@ border-radius:10px;padding:7px 10px;width:118px}
 .pole select{width:142px}.pole.obec input{width:200px}.pole input:focus,.pole select:focus{outline:2px solid var(--carolina);outline-offset:1px}
 .pole.km input{width:200px;padding:0;accent-color:var(--accent);background:none;border:0;height:34px}
 .pole.km output{color:var(--text);text-transform:none;letter-spacing:0;font-size:12px}
+/* filtr: jedna řádka (obec, zapnuté filtry, tlačítko Filtr), zbytek v rozbalovacím panelu */
+.f-lista{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+.f-hledat{display:flex;align-items:center;gap:6px;flex:0 1 240px;background:var(--surface-2);border:1px solid var(--line);
+border-radius:10px;padding:0 10px;color:var(--muted)}
+.f-hledat:focus-within{outline:2px solid var(--carolina);outline-offset:1px}
+.f-hledat input{flex:1;min-width:0;border:0;background:none;font:500 14px Inter,sans-serif;color:var(--text);padding:8px 0;outline:0}
+.f-aktivni{display:flex;flex-wrap:wrap;gap:6px;flex:1 1 200px;min-width:0}
+.f-chip{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:99px;padding:5px 8px 5px 11px;cursor:pointer;
+font:600 12.5px Inter,sans-serif;background:var(--carolina-light);color:var(--on-carolina)}
+.f-chip i{font-style:normal;font-size:15px;line-height:1;opacity:.6}.f-chip:hover i{opacity:1}
+.f-otevrit{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font:600 13.5px Inter,sans-serif;color:var(--text);
+background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:7px 12px;cursor:pointer}
+.f-otevrit[aria-expanded=true]{background:var(--navy);border-color:var(--navy);color:#fff}
+.f-pocet-akt{min-width:18px;height:18px;border-radius:99px;background:var(--accent);color:#fff;font-size:11px;display:grid;place-items:center;padding:0 5px}
+.f-pocet-akt:empty{display:none}
+.f-moje{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.f-moje[hidden]{display:none}
+.f-moje .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.f-presety{display:flex;flex-wrap:wrap;gap:6px}
+.preset{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:99px;background:var(--surface);overflow:hidden}
+.preset button{border:0;background:none;cursor:pointer;font:600 12.5px Inter,sans-serif;color:var(--text);padding:5px 4px 5px 11px}
+.preset .smaz{padding:5px 9px 5px 5px;color:var(--muted);font-size:15px;line-height:1}.preset .smaz:hover{color:var(--err)}
+.preset.on{background:var(--navy);border-color:var(--navy)}.preset.on button{color:#fff}
+.f-panel{display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line);padding-top:14px;animation:prolni .25s var(--ease)}
+.f-panel[hidden]{display:none}
+.f-mrizka{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 18px}
+.rozsah{display:flex;flex-direction:column;gap:5px;min-width:0}
+.rozsah .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.rozsah .lbl small{text-transform:none;letter-spacing:0;font-weight:500}
+.rozsah div{display:flex;align-items:center;gap:6px}.rozsah i{color:var(--muted);font-style:normal}
+.rozsah input[type=number]{flex:1;min-width:0;font:500 14px Inter,sans-serif;color:var(--text);background:var(--surface-2);
+border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+.rozsah input:focus{outline:2px solid var(--carolina);outline-offset:1px}
+.rozsah.km input{width:100%;accent-color:var(--accent);height:34px}.rozsah.km output{color:var(--text);text-transform:none;letter-spacing:0}
+.f-radek .lbl{width:96px}
+.f-akce{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px}
+.f-ulozit,.f-hotovo{font:600 13px Inter,sans-serif;border-radius:10px;padding:9px 12px;cursor:pointer;border:1px solid var(--line);
+background:var(--surface);color:var(--text)}.f-hotovo{background:var(--navy);border-color:var(--navy);color:#fff}
+/* stav webů: nenápadně v patičce, podrobnosti se rozbalí nahoru */
+.foot{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px}
+.foot .weby summary,.foot .weby.err summary{background:none;border:0;box-shadow:none;padding:0;font-size:12px;color:var(--muted);font-weight:500}
+.foot .weby.err summary{color:var(--err)}.foot .weby .dot{width:7px;height:7px}
+.foot .weby[open]>table{top:auto;bottom:100%;left:0;right:auto;margin:0 0 8px}
 .f-reset{font:600 13px Inter,sans-serif;color:var(--accent);background:var(--accent-soft);border:0;border-radius:10px;padding:9px 12px;cursor:pointer}
 .f-reset[disabled]{opacity:.45;cursor:default}
 .f-reset.odkaz{background:none;padding:0;text-decoration:underline}
@@ -719,7 +767,7 @@ const kmT=m=>m<1000?m+' m':(m/1000).toFixed(1).replace('.',',')+' km';
 const POCET=48,OKRUH_KM=D.okruh/1000;
 
 // --- stav filtrů (pamatuje si ho prohlížeč) ---
-const VYCHOZI=()=>({druh:[],okres:[],obec:'',cena:'',od:'',do:'',poz:'',km:OKRUH_KM});
+const VYCHOZI=()=>({druh:[],okres:[],stav:[],trh:[],obec:'',cenaOd:'',cenaDo:'',od:'',do:'',pozOd:'',pozDo:'',km:OKRUH_KM});
 let F={},razeni='novy',jenNove=false,jenZlev=false,jenObl=false;
 // --- oblíbené: id inzerátů v tomto prohlížeči (na každém zařízení zvlášť) ---
 const SRDCE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.4C1.4 7.6 3.6 4 7.2 4c2 0 3.6 1.1 4.8 2.8C13.2 5.1 14.8 4 16.8 4c3.6 0 5.8 3.6 4.5 7.1-1.8 4.8-9.3 9.4-9.3 9.4z"/></svg>';
@@ -734,36 +782,86 @@ function srdceStav(b,on,text){if(!b)return;b.classList.toggle('on',on);b.setAttr
   b.innerHTML=SRDCE+(text?'<span>'+(on?'V oblíbených':'Do oblíbených')+'</span>':'')}
 function oblPocet(){const n=Object.values(DATA).flat().filter(oblibeny).length;$('#oblPocet').textContent=n||''}
 try{F=JSON.parse(localStorage.getItem('hledac-plzen-filtry'))||{}}catch(e){}
-Object.keys(DATA).forEach(k=>F[k]=Object.assign(VYCHOZI(),F[k]||{}));
+Object.keys(DATA).forEach(k=>{const s=F[k]||{};F[k]=Object.assign(VYCHOZI(),s);
+  // starší uložený filtr: cena do (Kč z nabídky) a pozemek od
+  if(s.cena)F[k].cenaDo=String(s.cena/1e6);if(s.poz)F[k].pozOd=s.poz;delete F[k].cena;delete F[k].poz});
+let MOJE=[];try{MOJE=JSON.parse(localStorage.getItem('hledac-plzen-moje'))||[]}catch(e){}
+const ulozMoje=()=>{try{localStorage.setItem('hledac-plzen-moje',JSON.stringify(MOJE))}catch(e){}};
 try{razeni=localStorage.getItem('hledac-plzen-razeni')||'novy'}catch(e){}
 const ulozF=()=>{try{localStorage.setItem('hledac-plzen-filtry',JSON.stringify(F));localStorage.setItem('hledac-plzen-razeni',razeni)}catch(e){}};
 const disp=d=>{const m=/^(\d)\+(kk|\d)/i.exec(d.dispozice||'');if(!m)return 'neuvedeno';return +m[1]>=5?'5+ a větší':m[1]+'+'+m[2].toLowerCase()};
 const skupina=(kat,d)=>kat==='byty'?disp(d):(d.druh||'neuvedeno');
 const vychozi=kat=>JSON.stringify(F[kat])===JSON.stringify(VYCHOZI());
 
-function vol(box,polozky,vybrane,zmena){
-  box.replaceChildren(...polozky.map(([k,n])=>{const b=el('button','pill'+(vybrane.includes(k)?' on':''),k);b.type='button';
-    b.append(el('span','',n));b.onclick=()=>{const i=vybrane.indexOf(k);i<0?vybrane.push(k):vybrane.splice(i,1);
-      b.classList.toggle('on',i<0);zmena()};return b}))}
+// stav domu a cena vůči podobným (nemovitosti._trh_domy) jako volby filtru
+const STAVY=['nový nebo po rekonstrukci','v dobrém stavu','k rekonstrukci','neuvedeno'];
+const stavD=d=>d.stav||'neuvedeno';
+const TRHY=['levnější než podobné','jako podobné','dražší než podobné','nelze srovnat'];
+const trhD=d=>!d.trh||!d.trh.odhad?TRHY[3]:d.trh.rozdil<=-0.05?TRHY[0]:d.trh.rozdil>=0.05?TRHY[2]:TRHY[1];
+const cis=v=>v===''||v==null?null:+String(v).replace(',','.');
+const milT=v=>String(v).replace('.',',');
+
+function vol(box,polozky,kat,klic){
+  box.replaceChildren(...polozky.map(([k,n])=>{const b=el('button','pill'+(F[kat][klic].includes(k)?' on':''),k);b.type='button';b.dataset.k=k;
+    b.append(el('span','',n));b.onclick=()=>{const v=F[kat][klic],i=v.indexOf(k);i<0?v.push(k):v.splice(i,1);
+      b.classList.toggle('on',i<0);prekresli(kat)};return b}))}
+
+const POLE={obec:'.f-obec',cenaOd:'.f-cenaOd',cenaDo:'.f-cenaDo',od:'.f-od',do:'.f-do',pozOd:'.f-pozOd',pozDo:'.f-pozDo',km:'.f-km'};
+// hodnoty z F do polí a štítků (po zrušení štítku, výběru uloženého filtru, „Zrušit filtry“)
+function nastavPole(kat){const fp=$('#s-'+kat+' .filtry'),f=F[kat];if(!fp)return;
+  Object.entries(POLE).forEach(([k,sel])=>{const x=fp.querySelector(sel);if(x&&document.activeElement!==x)x.value=f[k]});
+  fp.querySelector('.f-km-v').textContent=f.km+' km';
+  fp.querySelectorAll('.volby').forEach(box=>box.querySelectorAll('.pill').forEach(b=>b.classList.toggle('on',f[box.dataset.klic].includes(b.dataset.k))))}
+// zapnuté filtry jako štítky: [text, zrušit]
+function aktivniFiltry(kat){const f=F[kat],r=[],roz=(a,b,j)=>a&&b?a+'–'+b+' '+j:a?'od '+a+' '+j:'do '+b+' '+j;
+  if(f.cenaOd||f.cenaDo)r.push(['Cena '+roz(f.cenaOd&&milT(f.cenaOd),f.cenaDo&&milT(f.cenaDo),'mil. Kč'),()=>{f.cenaOd=f.cenaDo=''}]);
+  if(f.od||f.do)r.push([(kat==='pozemky'?'Plocha ':'Užitná plocha ')+roz(f.od,f.do,'m²'),()=>{f.od=f.do=''}]);
+  if(f.pozOd||f.pozDo)r.push(['Pozemek '+roz(f.pozOd,f.pozDo,'m²'),()=>{f.pozOd=f.pozDo=''}]);
+  if(f.km<OKRUH_KM)r.push(['do '+f.km+' km od centra',()=>{f.km=OKRUH_KM}]);
+  ['okres','druh','stav','trh'].forEach(k=>f[k].forEach(v=>r.push([(k==='okres'?'okres ':'')+v,()=>{f[k].splice(f[k].indexOf(v),1)}])));
+  return r}
+function souhrnFiltru(kat){const fp=$('#s-'+kat+' .filtry');if(!fp)return;
+  const a=aktivniFiltry(kat);
+  fp.querySelector('.f-aktivni').replaceChildren(...a.map(([t,zrus])=>{const b=el('button','f-chip',t);b.type='button';b.title='Zrušit tento filtr';
+    b.append(el('i','','×'));b.onclick=()=>{zrus();nastavPole(kat);prekresli(kat)};return b}));
+  fp.querySelector('.f-pocet-akt').textContent=a.length||'';
+  const moje=MOJE.filter(m=>m.kat===kat),mb=fp.querySelector('.f-moje'),ted=JSON.stringify(F[kat]);mb.hidden=!moje.length;
+  mb.querySelector('.f-presety').replaceChildren(...moje.map(m=>{const w=el('span','preset'+(JSON.stringify(Object.assign(VYCHOZI(),m.f))===ted?' on':''));
+    const b=el('button','',m.nazev);b.type='button';b.title='Použít filtr „'+m.nazev+'“';
+    b.onclick=()=>{F[kat]=Object.assign(VYCHOZI(),JSON.parse(JSON.stringify(m.f)));nastavPole(kat);prekresli(kat)};
+    const x=el('button','smaz','×');x.type='button';x.title='Smazat filtr „'+m.nazev+'“';x.setAttribute('aria-label',x.title);
+    x.onclick=()=>{if(confirm('Smazat uložený filtr „'+m.nazev+'“?')){MOJE.splice(MOJE.indexOf(m),1);ulozMoje();souhrnFiltru(kat)}};
+    w.append(b,x);return w}));
+  fp.querySelectorAll('.f-reset').forEach(b=>b.disabled=vychozi(kat))}
 
 const postaveno={};
 function sestav(kat){const s=$('#s-'+kat),fp=s&&s.querySelector('.filtry');if(!fp||postaveno[kat])return;postaveno[kat]=true;
-  const data=DATA[kat],f=F[kat];
+  const data=DATA[kat];
   const pocty=fn=>{const m=new Map();data.forEach(d=>{const k=fn(d);if(k)m.set(k,(m.get(k)||0)+1)});return m};
   const poradi=D.druhy[kat]||[],dr=pocty(d=>skupina(kat,d));
   const kd=[...dr.keys()].sort(kat==='byty'?(a,b)=>a.localeCompare(b,'cs',{numeric:true}):(a,b)=>((poradi.indexOf(a)+1)||99)-((poradi.indexOf(b)+1)||99));
-  vol(fp.querySelector('.f-druh'),kd.map(k=>[k,dr.get(k)]),f.druh,()=>prekresli(kat));
+  vol(fp.querySelector('.f-druh'),kd.map(k=>[k,dr.get(k)]),kat,'druh');
   const ok=pocty(d=>d.okres||'neuvedeno');
   const ko=[...ok.keys()].sort((a,b)=>(((D.okresy.indexOf(a)+1)||99)-((D.okresy.indexOf(b)+1)||99))||a.localeCompare(b,'cs'));
-  vol(fp.querySelector('.f-okres'),ko.map(k=>[k,ok.get(k)]),f.okres,()=>prekresli(kat));
+  vol(fp.querySelector('.f-okres'),ko.map(k=>[k,ok.get(k)]),kat,'okres');
+  [['.f-stav',STAVY,stavD,'stav'],['.f-trh',TRHY,trhD,'trh']].forEach(([sel,poradi,fn,klic])=>{const box=fp.querySelector(sel);if(!box)return;
+    const m=pocty(fn);vol(box,poradi.filter(k=>m.get(k)).map(k=>[k,m.get(k)]),kat,klic)});
   const ob=pocty(d=>d.obec);fp.querySelector('datalist').replaceChildren(...[...ob.keys()].sort((a,b)=>a.localeCompare(b,'cs'))
     .map(o=>{const x=el('option');x.value=o;x.label=ob.get(o)+' inzerátů';return x}));
-  const pole={obec:'.f-obec',cena:'.f-cena',od:'.f-od',do:'.f-do',poz:'.f-poz',km:'.f-km'};let cas;
-  Object.entries(pole).forEach(([k,sel])=>{const x=fp.querySelector(sel);if(!x)return;x.value=f[k];
-    x.addEventListener(k==='cena'?'change':'input',()=>{f[k]=k==='km'?+x.value:x.value;
+  let cas;
+  Object.entries(POLE).forEach(([k,sel])=>{const x=fp.querySelector(sel);if(!x)return;
+    x.addEventListener('input',()=>{F[kat][k]=k==='km'?+x.value:x.value.trim();
       if(k==='km')fp.querySelector('.f-km-v').textContent=x.value+' km';clearTimeout(cas);cas=setTimeout(()=>prekresli(kat),k==='obec'||k==='km'?250:400)})});
-  fp.querySelector('.f-km-v').textContent=f.km+' km';
-  s.querySelectorAll('.f-reset').forEach(b=>b.onclick=()=>{F[kat]=VYCHOZI();postaveno[kat]=false;sestav(kat);prekresli(kat)});
+  nastavPole(kat);
+  const ot=fp.querySelector('.f-otevrit'),pn=fp.querySelector('.f-panel');
+  const panel=v=>{pn.hidden=!v;ot.setAttribute('aria-expanded',v)};
+  ot.onclick=()=>panel(pn.hidden);fp.querySelector('.f-hotovo').onclick=()=>panel(false);
+  fp.querySelector('.f-ulozit').onclick=()=>{
+    if(vychozi(kat))return oznameni('Nejdřív si filtr nastav, pak ho ulož.',4000);
+    const n=(prompt('Pojmenuj filtr (např. „Do 8 mil. s pozemkem“):')||'').trim();if(!n)return;
+    MOJE=MOJE.filter(m=>!(m.kat===kat&&m.nazev===n));MOJE.push({kat,nazev:n,f:JSON.parse(JSON.stringify(F[kat]))});
+    ulozMoje();souhrnFiltru(kat);oznameni('Filtr „'+esc(n)+'“ uložen – najdeš ho v řádku Moje filtry.',4000)};
+  s.querySelectorAll('.f-reset').forEach(b=>b.onclick=()=>{F[kat]=VYCHOZI();nastavPole(kat);prekresli(kat)});
   const mp=s.querySelector('.mapa-prepinac'),mo=s.querySelector('.mapa-obal');let skryt=false;
   try{skryt=localStorage.getItem('hledac-plzen-mapa')==='0'}catch(e){}
   mo.hidden=skryt;mp.setAttribute('aria-pressed',!skryt);
@@ -776,10 +874,12 @@ function projde(kat,d){const f=F[kat];
   if(jenNove&&!d.novy)return false;if(jenZlev&&!d.zlevneno)return false;if(jenObl&&!oblibeny(d))return false;
   if(f.druh.length&&!f.druh.includes(skupina(kat,d)))return false;
   if(f.okres.length&&!f.okres.includes(d.okres||'neuvedeno'))return false;
+  if(f.stav.length&&!f.stav.includes(stavD(d)))return false;if(f.trh.length&&!f.trh.includes(trhD(d)))return false;
   if(f.obec&&!bezd(d.obec+' '+d.cast+' '+d.misto).includes(bezd(f.obec.trim())))return false;
-  if(f.cena&&d.cena&&d.cena>+f.cena)return false;
-  if(f.od&&!(d.plocha>=+f.od))return false;if(f.do&&!(d.plocha<=+f.do))return false;
-  if(f.poz&&!(d.pozemek>=+f.poz))return false;
+  const c1=cis(f.cenaOd),c2=cis(f.cenaDo);  // v mil. Kč; „cena na dotaz“ zůstává, když je jen horní mez
+  if(c1!=null&&!(d.cena>=c1*1e6))return false;if(c2!=null&&d.cena&&d.cena>c2*1e6)return false;
+  if(f.od&&!(d.plocha>=cis(f.od)))return false;if(f.do&&!(d.plocha<=cis(f.do)))return false;
+  if(f.pozOd&&!(d.pozemek>=cis(f.pozOd)))return false;if(f.pozDo&&!(d.pozemek<=cis(f.pozDo)))return false;
   if(f.km<OKRUH_KM&&!(d.vzdalenost!=null&&d.vzdalenost<=f.km*1000))return false;
   return true}
 const M2=d=>d.cena&&d.plocha?d.cena/d.plocha:null;
@@ -798,7 +898,7 @@ function prekresli(kat){const s=$('#s-'+kat);if(!s||!s.querySelector('.grid'))re
   stav[kat]={poradi:p,zobrazeno:0};s.querySelector('.grid').replaceChildren();pridej(kat);
   s.querySelector('.none').hidden=p.length>0;
   s.querySelector('.f-pocet').textContent=p.length===data.length?'Všech '+fmt(p.length)+' inzerátů':'Zobrazeno '+fmt(p.length)+' z '+fmt(data.length);
-  s.querySelectorAll('.filtry .f-reset').forEach(b=>b.disabled=vychozi(kat));
+  souhrnFiltru(kat);
   $$('.stat.klik').forEach(t=>t.classList.toggle('on',t.dataset.filtr==='novy'?jenNove:jenZlev));
   mapa(kat)}
 function pridej(kat){const st=stav[kat],s=$('#s-'+kat),g=s.querySelector('.grid');
