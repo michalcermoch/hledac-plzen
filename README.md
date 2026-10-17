@@ -86,6 +86,14 @@ kód z pozvánky neplatí. Na zařízení, kde si heslo nastavil, platí hned; j
 
 Zapomenuté heslo: smazat `pristupy.json` ve větvi `gh-pages` – po dalším běhu zase platí kód z pozvánky.
 
+**E-mail pro upozornění:** při prvním otevření vlastním heslem se stránka zeptá, kam posílat denní souhrn
+(„Teď ne“ = znovu za týden). Adresa jde stejnou cestou jako heslo – zašifrovaná hlavním klíčem do skrytého
+kanálu; cloud ji uloží zašifrovanou do `email.json` v `gh-pages` a má přednost před secretem `EMAIL_KOMU`.
+
+**Zkouška nanečisto:** `Zkouška přihlášení.cmd` vyrobí zkušební stránku se zkušebním klíčem a kódem
+`ZKOUSKA-2026` na http://localhost:8767 – celý postup (kód → heslo → e-mail) si projdeš bez sahání na Domčův
+přístup; Enter v okně = další běh cloudu.
+
 ## Denní souhrn e-mailem
 
 **Jen z cloudu, jednou denně kolem 20:00** – jeden e-mail se vším, co od minulého souhrnu přibylo nebo zlevnilo

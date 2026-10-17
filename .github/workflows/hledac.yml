@@ -61,7 +61,10 @@ jobs:
           restore-keys: stav-
 
       - name: Nastavená hesla (z gh-pages)
-        run: git fetch -q --depth=1 origin gh-pages && git show FETCH_HEAD:pristupy.json > pristupy.json || echo "zatím žádná"
+        run: |
+          git fetch -q --depth=1 origin gh-pages || exit 0
+          git show FETCH_HEAD:pristupy.json > pristupy.json || echo "zatím žádná hesla"
+          git show FETCH_HEAD:email.json > email.json || { rm -f email.json; echo "e-mail zatím nenastavený"; }
 
       - name: Stažené stránky z minula
         uses: actions/cache/restore@v4

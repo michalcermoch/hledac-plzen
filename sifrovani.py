@@ -15,6 +15,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import urllib.request
 from html import escape
 
@@ -47,17 +48,57 @@ def platny_pristup(v) -> bool:
         return False
 
 
+def _zpravy(kanal: str) -> list[dict]:
+    """Zprávy ze skrytého kanálu ntfy (drží je 12 h), nejstarší první."""
+    with urllib.request.urlopen(f"{NTFY}{kanal}/json?poll=1&since=all", timeout=30) as r:
+        zpravy = [json.loads(radek) for radek in r.read().decode("utf-8").splitlines() if radek.strip()]
+    return sorted((z for z in zpravy if z.get("event") == "message"), key=lambda z: z.get("time", 0))
+
+
+def _rozsifruj(klic: bytes, obal: dict) -> bytes:
+    return AESGCM(klic).decrypt(base64.b64decode(obal["nonce"]), base64.b64decode(obal["data"]), None)
+
+
+def novy_email(kanal: str, klic: bytes, ulozeny: dict | None, log=print) -> dict | None:
+    """E-mail pro upozornění, který si uživatel nastavil na stránce (po prvním přihlášení vlastním heslem).
+    Prohlížeč ho pošle do kanálu zašifrovaný hlavním klíčem; vrací záznam k uložení (email.json v gh-pages,
+    zašifrovaný - repo je veřejné), nejnovější vyhrává. Beze změny vrací uložený."""
+    try:
+        zpravy = _zpravy(kanal)
+    except Exception as e:
+        log(f"e-mail: kanál nejde přečíst ({type(e).__name__}) - beru, co bylo")
+        return ulozeny
+    for z in reversed(zpravy):
+        try:
+            obal = json.loads(z.get("message") or "")["email"]
+            adresa = json.loads(_rozsifruj(klic, obal))["email"].strip()
+        except Exception:
+            continue
+        if re.fullmatch(r"[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+", adresa) and len(adresa) <= 120:
+            if not ulozeny or email_z(ulozeny, klic) != adresa:
+                log("e-mail: uživatel si nastavil novou adresu pro upozornění")
+                return _zasifruj(klic, json.dumps({"email": adresa}).encode("utf-8"))
+            break
+    return ulozeny
+
+
+def email_z(zaznam: dict, klic: bytes) -> str | None:
+    try:
+        return json.loads(_rozsifruj(klic, zaznam))["email"]
+    except Exception:
+        return None
+
+
 def nove_pristupy(kanal: str, pristupy: list[dict], log=print) -> list[dict]:
     """Přidá hesla, která si někdo nastavil od minula (zprávy v kanálu ntfy drží 12 h, běh je každé 2 h)."""
     try:
-        with urllib.request.urlopen(f"{NTFY}{kanal}/json?poll=1&since=all", timeout=30) as r:
-            zpravy = [json.loads(radek) for radek in r.read().decode("utf-8").splitlines() if radek.strip()]
+        zpravy = _zpravy(kanal)
     except Exception as e:
         log(f"přístupy: kanál nejde přečíst ({type(e).__name__}) - beru, co bylo")
         return pristupy
     znama = {p["data"] for p in pristupy}
     nove = []
-    for z in sorted((z for z in zpravy if z.get("event") == "message"), key=lambda z: z.get("time", 0)):
+    for z in zpravy:
         try:
             v = json.loads(z.get("message") or "")
         except ValueError:
@@ -71,13 +112,14 @@ def nove_pristupy(kanal: str, pristupy: list[dict], log=print) -> list[dict]:
 
 
 def zasifruj(html: str, klic: bytes, pozvanka: str | None, pristupy: list[dict], kanal: str | None,
-             jmeno: str = "") -> str:
-    """klic = hlavní klíč (32 B); pozvanka = kód pro první přihlášení (platí, jen dokud si nikdo nenastavil heslo)."""
+             jmeno: str = "", email_nastaven: bool = False) -> str:
+    """klic = hlavní klíč (32 B); pozvanka = kód pro první přihlášení (platí, jen dokud si nikdo nenastavil heslo);
+    email_nastaven = uživatel už si e-mail pro upozornění nastavil (stránka se pak neptá)."""
     vstupy = [{"typ": "heslo"} | {k: p[k] for k in ("sul", "nonce", "data", "iteraci")} for p in pristupy]
     if pozvanka and not pristupy:
         vstupy.append({"typ": "pozvanka"} | _zamkni_klic(klic, pozvanka))
     balik = {"obsah": _zasifruj(klic, gzip.compress(html.encode("utf-8"), 9)), "vstupy": vstupy,
-             "kanal": _zasifruj(klic, kanal.encode("utf-8")) if kanal else None}
+             "kanal": _zasifruj(klic, kanal.encode("utf-8")) if kanal else None, "email": email_nastaven}
     kdo = f" · {escape(jmeno)}" if jmeno else ""
     return ZAMEK.replace("__KDO__", kdo).replace("__BALIK__", json.dumps(balik))
 
@@ -97,6 +139,9 @@ border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.95);color:#10
 label{display:flex;gap:8px;align-items:center;font-size:13px;color:rgba(243,241,234,.85);margin-bottom:16px}
 button{width:100%;font:600 15px system-ui,sans-serif;padding:12px;border:0;border-radius:12px;background:#e9b95a;color:#2a1c04;cursor:pointer}
 button:disabled{opacity:.6;cursor:progress}
+input[type=email]{width:100%;box-sizing:border-box;font:inherit;padding:12px 14px;border-radius:12px;
+border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.95);color:#10251c;margin-bottom:12px}
+.pozdeji{margin-top:8px;background:none;color:rgba(243,241,234,.8);font-weight:500}
 .chyba{color:#ffb4a8;font-size:13px;min-height:1.2em;margin:-4px 0 10px}
 small{display:block;margin-top:14px;font-size:12px;color:rgba(243,241,234,.6)}
 </style></head><body>
@@ -112,7 +157,17 @@ small{display:block;margin-top:14px;font-size:12px;color:rgba(243,241,234,.6)}
 <div class="chyba" id="e2"></div>
 <button id="b2">Uložit heslo a otevřít</button>
 <small>Na tomhle zařízení platí hned, na ostatních nejpozději do dvou hodin (po další aktualizaci přehledu).</small></form>
+<form id="f3" hidden autocomplete="on"><h1>Upozornění e-mailem 📬</h1>
+<p>Kam ti mám posílat novinky? Jednou denně kolem 20:00 přijde souhrn nových a zlevněných domů – jen když nějaké přibyly.</p>
+<input type="email" id="m1" autocomplete="email" inputmode="email" placeholder="tvuj@email.cz">
+<div class="chyba" id="e3"></div>
+<button id="b3">Uložit e-mail</button>
+<button type="button" class="pozdeji" id="b3p">Teď ne</button>
+<small>Adresa se uloží zašifrovaně, vidí ji jen Hledač.</small></form>
 <script>
+// Vše uvnitř funkce: přehled se zapíše do stejného okna (document.write) a globální const/let zámku
+// by kolidovaly s jeho skriptem („Identifier '$' has already been declared“ -> prázdná stránka).
+(()=>{
 const B=__BALIK__,ITER=310000;
 const d=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0)),e64=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
 const ls={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},
@@ -133,13 +188,31 @@ async function klicZHesla(heslo){for(const v of vstupy){try{const k=await kdf(he
 async function otevri(klic){const data=await aes(klic,B.obsah);
   const html=await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
   document.open();document.write(html);document.close()}
-(async()=>{const k=ls.get('hledac-plzen-klic');if(!k)return;try{await otevri(d(k))}catch(e){ls.del('hledac-plzen-klic')}})();
+// E-mail pro upozornění: zeptat se při prvním otevření vlastním heslem (ne kódem z pozvánky), dokud ho cloud
+// nemá; „Teď ne“ = zeptat se znovu za týden. Hodnota v ls: 'ulozen' nebo čas odložení.
+const TYDEN=7*864e5;
+function chciEmail(){if(B.email||!B.kanal)return false;const s=ls.get('hledac-plzen-email');
+  return !s||(s!=='ulozen'&&Date.now()-(+s||0)>TYDEN)}
+async function poOdemceni(klic){if(chciEmail()){odemceny=klic;$('f1').hidden=true;$('f2').hidden=true;$('f3').hidden=false;$('m1').focus();return}
+  await otevri(klic)}
 let odemceny=null;
+(async()=>{const k=ls.get('hledac-plzen-klic');if(!k)return;try{await aes(d(k),B.kanal||B.obsah);await poOdemceni(d(k))}catch(e){ls.del('hledac-plzen-klic')}})();
 $('f1').onsubmit=async ev=>{ev.preventDefault();const e=$('e1');e.textContent='Odemykám…';
   const r=await klicZHesla($('h1').value);if(!r){e.textContent=jenPozvanka?'Špatný kód.':'Špatné heslo.';return}
   if($('z').checked)ls.set('hledac-plzen-klic',e64(r.klic));
   if(r.typ==='pozvanka'&&B.kanal){odemceny=r.klic;$('f1').hidden=true;$('f2').hidden=false;$('n1').focus();return}
-  try{await otevri(r.klic)}catch(x){e.textContent='Stránku se nepodařilo otevřít.'}};
+  try{await poOdemceni(r.klic)}catch(x){e.textContent='Stránku se nepodařilo otevřít.'}};
+$('f3').onsubmit=async ev=>{ev.preventDefault();const e=$('e3'),m=$('m1').value.trim();
+  if(!/^[^@\\s,;]+@[^@\\s,;]+\\.[^@\\s,;]+$/.test(m)){e.textContent='Tohle nevypadá jako e-mailová adresa.';return}
+  $('b3').disabled=true;e.textContent='Ukládám…';
+  try{const iv=crypto.getRandomValues(new Uint8Array(12));
+    const k=await crypto.subtle.importKey('raw',odemceny,'AES-GCM',false,['encrypt']);
+    const data=await crypto.subtle.encrypt({name:'AES-GCM',iv},k,new TextEncoder().encode(JSON.stringify({email:m})));
+    const kanal=new TextDecoder().decode(await aes(odemceny,B.kanal));
+    const r=await fetch('https://ntfy.sh/'+kanal,{method:'POST',body:JSON.stringify({email:{nonce:e64(iv),data:e64(data)}})});
+    if(!r.ok)throw new Error(r.status);ls.set('hledac-plzen-email','ulozen');await otevri(odemceny)}
+  catch(x){$('b3').disabled=false;e.textContent='E-mail se nepodařilo uložit ('+x.message+'). Zkus to znovu.'}};
+$('b3p').onclick=async()=>{ls.set('hledac-plzen-email',String(Date.now()));await otevri(odemceny)};
 $('f2').onsubmit=async ev=>{ev.preventDefault();const e=$('e2'),h=$('n1').value;
   if(h.length<8){e.textContent='Heslo musí mít aspoň 8 znaků.';return}if(h!==$('n2').value){e.textContent='Hesla se neshodují.';return}
   $('b2').disabled=true;e.textContent='Ukládám…';
@@ -150,4 +223,5 @@ $('f2').onsubmit=async ev=>{ev.preventDefault();const e=$('e2'),h=$('n1').value;
     const r=await fetch('https://ntfy.sh/'+kanal,{method:'POST',body:JSON.stringify(v)});if(!r.ok)throw new Error(r.status);
     ls.set('hledac-plzen-cekajici',JSON.stringify(v));await otevri(odemceny)}
   catch(x){$('b2').disabled=false;e.textContent='Heslo se nepodařilo uložit ('+x.message+'). Zkus to znovu.'}};
+})();
 </script></body></html>"""

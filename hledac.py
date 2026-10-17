@@ -312,8 +312,19 @@ def cloud():
             pristupy = sifrovani.nove_pristupy(kanal, pristupy)
         (web / "pristupy.json").write_text(json.dumps(pristupy, indent=1), encoding="utf-8")
         print(f"Přístupy: {len(pristupy)} nastavených hesel" + ("" if pristupy else ", platí kód z pozvánky"))
-        stranka = sifrovani.zasifruj(stranka, base64.b64decode(os.environ["HLAVNI_KLIC"]),
-                                     os.environ.get("HESLO_STRANKY"), pristupy, kanal, nastaveni.nacti().get("jmeno"))
+        # e-mail pro upozornění, který si uživatel nastavil na stránce (zašifrovaný; má přednost před EMAIL_KOMU)
+        klic = base64.b64decode(os.environ["HLAVNI_KLIC"])
+        soubor = KOREN / "email.json"
+        email = json.loads(soubor.read_text(encoding="utf-8")) if soubor.exists() else None
+        if kanal:
+            email = sifrovani.novy_email(kanal, klic, email)
+        email = email if email and sifrovani.email_z(email, klic) else None
+        if email:
+            (web / "email.json").write_text(json.dumps(email), encoding="utf-8")
+            os.environ["EMAIL_KOMU"] = sifrovani.email_z(email, klic)
+            print("E-mail pro upozornění: nastavený uživatelem na stránce")
+        stranka = sifrovani.zasifruj(stranka, klic, os.environ.get("HESLO_STRANKY"), pristupy, kanal,
+                                     nastaveni.nacti().get("jmeno"), email_nastaven=bool(email))
     (web / "index.html").write_text(stranka, encoding="utf-8")
     (web / ".nojekyll").write_text("", encoding="utf-8")
     print(f"Zašifrovaná stránka: {web / 'index.html'}")
