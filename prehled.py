@@ -602,6 +602,11 @@ box-shadow:var(--shadow);min-width:420px}
 box-shadow:0 4px 12px rgba(29,51,40,.4);border:2px solid #fff;transform:translate(-50%,-50%);cursor:pointer;transition:transform .2s}
 .pin:hover{transform:translate(-50%,-50%) scale(1.12);background:var(--accent)}
 .pin.odhad{background:#fff;color:var(--navy);border:2px dashed var(--navy)}
+/* zvýrazněná nemovitost na mapě (karta pod myší) a karta pod myší na mapě */
+.pin-zvyr{width:34px;height:34px;border-radius:50%;border:3px solid #e9b95a;transform:translate(-50%,-50%);pointer-events:none;
+box-shadow:0 0 0 6px rgba(233,185,90,.35);animation:zvyr 1.4s ease-out infinite}
+@keyframes zvyr{0%{box-shadow:0 0 0 0 rgba(233,185,90,.6)}100%{box-shadow:0 0 0 16px rgba(233,185,90,0)}}
+.card.na-mape{box-shadow:0 0 0 3px #e9b95a,var(--shadow)}
 .pin-cil{width:26px;height:26px;border-radius:50%;background:var(--carolina);border:3px solid #fff;box-shadow:0 0 0 6px rgba(217,164,65,.35);
 transform:translate(-50%,-50%);animation:tepcil 2.4s infinite}
 @keyframes tepcil{50%{box-shadow:0 0 0 14px rgba(217,164,65,0)}}
@@ -999,14 +1004,29 @@ function mapa(kat){const s=$('#s-'+kat),box=s&&s.querySelector('.mapa');
     (location.protocol==='file:'?L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Mapa © Esri'}):L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'})).addTo(m);
     L.circle(D.stred,{radius:D.okruh,color:'#2f6b4f',weight:1.5,dashArray:'6 6',fillColor:'#e9c47a',fillOpacity:.06,interactive:false}).addTo(m);
     L.marker(D.stred,{icon:L.divIcon({className:'',iconSize:null,html:'<div class="pin-cil"></div>'})}).addTo(m).bindTooltip('Centrum Plzně – '+D.stred_popis);
-    M=mapy[kat]={m,vrstva:L.layerGroup().addTo(m)};m.fitBounds(L.latLng(D.stred).toBounds(D.okruh*1.75))}
+    M=mapy[kat]={m,vrstva:L.layerGroup().addTo(m),znacky:{}};m.fitBounds(L.latLng(D.stred).toBounds(D.okruh*1.75))}
   else setTimeout(()=>M.m.invalidateSize(),50);
-  M.vrstva.clearLayers();
+  M.vrstva.clearLayers();M.znacky={};if(M.halo){M.halo.remove();M.halo=null}M.zvyr=null;
   stav[kat].poradi.forEach(i=>{const d=DATA[kat][i];if(!d.gps)return;const hruba=d.gps_odhad==='obec'||d.gps_odhad==='PSČ';
     const mk=L.circleMarker(d.gps,{radius:d.novy?7:5.5,weight:hruba?1:2,color:'#fff',
       fillColor:d.zlevneno?'#c0581c':d.novy?'#d9a441':'#1f4a37',fillOpacity:hruba?.55:.9});
     mk.bindTooltip(esc(d.nazev)+'<br><b>'+kc(d.cena)+'</b> · '+esc(d.obec)+(hruba?' <i>(poloha obce)</i>':''));
-    mk.on('click',()=>otevri(d,0));mk.addTo(M.vrstva)})}
+    mk.on('click',()=>otevri(d,0));mk.addTo(M.vrstva);M.znacky[i]=mk;
+    // najetí na tečku obtáhne její kartu (a naopak, viz zvyrazni)
+    mk.on('mouseover',()=>{const k=s.querySelector('.card[data-i="'+i+'"]');if(k)k.classList.add('na-mape')});
+    mk.on('mouseout',()=>{const k=s.querySelector('.card[data-i="'+i+'"]');if(k)k.classList.remove('na-mape')})})}
+// karta pod myší (nebo s fokusem z klávesnice): její tečka na mapě se zvětší, rozsvítí, je navrchu a pulzuje kolem ní
+// kroužek; mimo výřez se mapa posune (stejně jako v Hledači bytů a aut)
+function zvyrazni(kat,i){const M=mapy[kat];if(!M||M.zvyr===i)return;
+  const stara=M.zvyr!=null&&M.znacky[M.zvyr];if(stara)stara.setStyle(stara._puvodni).setRadius(stara._puvodni.radius);
+  if(M.halo){M.halo.remove();M.halo=null}M.zvyr=i;const mk=i!=null&&M.znacky[i];if(!mk)return;
+  mk._puvodni=Object.assign({},mk.options);mk.setStyle({fillColor:'#e9b95a',color:'#fff',weight:3,fillOpacity:1}).setRadius(10);mk.bringToFront();
+  M.halo=L.marker(mk.getLatLng(),{icon:L.divIcon({className:'',iconSize:null,html:'<div class="pin-zvyr"></div>'}),interactive:false,zIndexOffset:1000}).addTo(M.m);
+  if(!M.m.getBounds().pad(-.08).contains(mk.getLatLng()))M.m.panTo(mk.getLatLng(),{animate:!klidne})}
+document.querySelectorAll('main section[data-t]').forEach(sec=>{const g=sec.querySelector('.grid'),kat=sec.dataset.t;if(!g)return;
+  g.addEventListener('mouseover',e=>{const k=e.target.closest('.card');if(k)zvyrazni(kat,+k.dataset.i)});
+  g.addEventListener('mouseleave',()=>zvyrazni(kat,null));
+  g.addEventListener('focusin',e=>{const k=e.target.closest('.card');if(k)zvyrazni(kat,+k.dataset.i)})});
 
 // --- graf vývoje ceny (schodovitá čára: cena platí až do další změny) ---
 function grafCeny(hist){const box=dlg.querySelector('.graf'),souhrn=dlg.querySelector('.dCenaSouhrn');box.replaceChildren();souhrn.className='dCenaSouhrn';
