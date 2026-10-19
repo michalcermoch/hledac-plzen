@@ -1108,9 +1108,8 @@ const tvar=(n,a,b,c)=>n===1?a:n<5?b:c;
 function souhrnText(s){return Object.entries(s||{}).map(([k,v])=>'<span>'+((D.popisky[k]||{}).titul||k)+': '
   +(v.nove||v.zlevnene?[v.nove?'<b>+'+v.nove+' '+tvar(v.nove,'nový','nové','nových')+'</b>':'',
     v.zlevnene?'<b>'+v.zlevnene+' '+tvar(v.zlevnene,'zlevněný','zlevněné','zlevněných')+'</b>':''].filter(Boolean).join(', '):'nic nového')+'</span>').join(' · ')}
-// Cloud bez tokenu: tlačítko otevře stránku workflow na GitHubu.
-if(D.akce_url&&!D.akce_token){btn.hidden=false;btn.title='Otevře GitHub, tam „Run workflow“ (je potřeba být přihlášený)';
-  btn.onclick=()=>window.open(D.akce_url,'_blank')}
+// Cloud bez tokenu: tlačítko by jen otevřelo GitHub, kde nepřihlášený uživatel nic nespustí -> zůstává skryté
+// (Hledač se v cloudu aktualizuje sám několikrát denně; přímé spuštění ze stránky umí jen s AKTUALIZACE_TOKEN).
 // Cloud s tokenem (jen Actions tohoto repa): spustí hledání přes API, hlídá běh a po zveřejnění obnoví stránku.
 if(D.akce_url&&D.akce_token){btn.hidden=false;btn.title='Znovu prohledat všechny weby (asi 10 minut)';
   const api='https://api.github.com/repos/'+D.akce_repo+'/actions/workflows/hledac.yml/',
