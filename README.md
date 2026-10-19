@@ -1,8 +1,7 @@
 # Hledač nemovitostí – Plzeň a okolí
 
-Osobní hledač pro Domču. Prochází 8 realitních webů, vybírá **rodinné domy na prodej
-do 15 mil. Kč a do 20 km od centra Plzně** (od 17. 10. 2026 jen domy; byty a pozemky weby umí dál,
-zapínají se v `HLEDAT` v `nemovitosti.py`), slučuje duplicity a pamatuje si, co je nové a co zlevnilo.
+Osobní hledač pro Domču. Prochází 8 realitních webů, vybírá **rodinné domy a zvlášť pozemky na prodej
+do 15 mil. Kč a do 20 km od centra Plzně** (byty weby umí dál, zapínají se v `HLEDAT` v `nemovitosti.py`), slučuje duplicity a pamatuje si, co je nové a co zlevnilo.
 Výsledek je jedna zaheslovaná webová stránka (telefon i počítač) a denní souhrn e-mailem.
 
 Stejný princip jako Hledač bytů a aut (`C:\Projects\Hledac`), jen pro nemovitosti a s filtry přímo na stránce.
